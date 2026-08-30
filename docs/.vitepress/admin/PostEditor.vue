@@ -12,6 +12,18 @@ const emit = defineEmits<{
 }>()
 
 const uploading = ref(false)
+const fileInput = ref<HTMLInputElement | null>(null)
+
+function pickImage() {
+  fileInput.value?.click()
+}
+
+function onFilePicked(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = '' // 允许连续选择同一文件
+  if (file) uploadAndInsert(file)
+}
 
 const editor = useEditor({
   contentType: 'markdown', // 初始 content 按 markdown 解析
@@ -109,6 +121,7 @@ const toolbarButtons = [
   { label: '代码块', action: cmd((c) => c.toggleCodeBlock()), isActive: isActive('codeBlock') },
   { label: '撤销', action: cmd((c) => c.undo()), isActive: () => false },
   { label: '重做', action: cmd((c) => c.redo()), isActive: () => false },
+  { label: '图片', action: pickImage, isActive: () => false },
 ]
 </script>
 
@@ -123,6 +136,13 @@ const toolbarButtons = [
         @click="b.action"
       >{{ b.label }}</button>
       <span v-if="uploading" class="uploading">上传中…</span>
+      <input
+        ref="fileInput"
+        type="file"
+        accept="image/*"
+        class="file-input"
+        @change="onFilePicked"
+      />
     </div>
     <EditorContent :editor="editor" class="tiptap-body" />
   </div>
@@ -159,6 +179,9 @@ const toolbarButtons = [
   font-size: 0.8rem;
   color: var(--vp-c-text-3);
   align-self: center;
+}
+.file-input {
+  display: none;
 }
 .tiptap-body {
   flex: 1;

@@ -1,18 +1,22 @@
 /**
  * /api/admin/* 路由分发（Node 侧，仅 dev 加载）。
  * 负责 HTTP 行为：URL 解析、请求体读取、校验、错误码映射、JSON 响应。
- * 业务逻辑（读文件、上传）委托给 posts-store 与 upload-smms。
+ * 业务逻辑（读文件、上传）委托给 posts-store 与 upload-cos。
  */
 import { URL } from 'node:url'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import {
   PostsStore,
   NotFoundError,
+  ConflictError,
   type PostMeta,
 } from './posts-store'
-import { uploadToSmms, SmmsError } from './upload-smms'
+import type { UploadFile, UploadResult } from './upload-cos'
+import { CosError } from './upload-cos'
 import { validateSlug } from '../lib/slug'
 import { isValidDate, type PostFrontmatter } from '../lib/frontmatter'
+
+export type Uploader = (file: UploadFile) => Promise<UploadResult>
 
 export const ADMIN_PREFIX = '/api/admin'
 
@@ -22,6 +26,9 @@ export type AdminRoute =
   | { type: 'save'; slug: string }
   | { type: 'remove'; slug: string }
   | { type: 'upload' }
+  | { type: 'trash-list' }
+  | { type: 'trash-restore'; slug: string }
+  | { type: 'trash-remove'; slug: string }
   | { type: 'notfound' }
 
 /** 纯函数：把 URL 路径 + HTTP 方法解析为路由，方便单测。 */
@@ -40,14 +47,21 @@ export function parseAdminRoute(urlPath: string, method = 'GET'): AdminRoute {
   }
   if (parts.length === 1 && parts[0] === 'posts') return { type: 'list' }
   if (parts.length === 1 && parts[0] === 'upload') return { type: 'upload' }
+  if (parts.length === 1 && parts[0] === 'trash') return { type: 'trash-list' }
+  if (parts.length === 3 && parts[0] === 'trash' && parts[2] === 'restore') {
+    return { type: 'trash-restore', slug: parts[1] }
+  }
+  if (parts.length === 2 && parts[0] === 'trash') {
+    if (up === 'DELETE') return { type: 'trash-remove', slug: parts[1] }
+    return { type: 'trash-restore', slug: parts[1] }
+  }
   return { type: 'notfound' }
 }
 
 export interface AdminContext {
   store: PostsStore
-  /** SMMS_TOKEN，未配置为 '' */
-  token: string
-  fetchFn?: typeof fetch
+  /** COS 上传器；未配置为 null（此时上传接口返回 503） */
+  uploader?: Uploader | null
 }
 
 type JSONPrimitive = string | number | boolean | null
@@ -82,12 +96,20 @@ export async function handleAdminRequest(
       case 'upload':
         if (method !== 'POST') return methodNotAllowed(res)
         return await handleUpload(res, req, ctx)
+      case 'trash-list':
+        return await handleTrashList(res, ctx)
+      case 'trash-restore':
+        return await handleTrashRestore(res, route.slug, method, ctx)
+      case 'trash-remove':
+        if (method !== 'DELETE') return methodNotAllowed(res)
+        return await handleTrashRemove(res, route.slug, ctx)
       default:
         return notFound(res)
     }
   } catch (err) {
     if (err instanceof NotFoundError) return notFound(res)
-    if (err instanceof SmmsError) return smmsError(res, err)
+    if (err instanceof ConflictError) return conflict(res, err)
+    if (err instanceof CosError) return uploadError(res, err)
     status500(res, err)
   }
 }
@@ -148,6 +170,35 @@ async function handleRemove(
   res.end()
 }
 
+async function handleTrashList(res: ServerResponse, ctx: AdminContext): Promise<void> {
+  json(res, 200, await ctx.store.listTrash())
+}
+
+async function handleTrashRestore(
+  res: ServerResponse,
+  slug: string,
+  method: string,
+  ctx: AdminContext,
+): Promise<void> {
+  if (method !== 'POST') return methodNotAllowed(res)
+  const slugCheck = validateSlug(slug)
+  if (!slugCheck.ok) return badRequest(res, slugCheck.error)
+  const saved = await ctx.store.restore(slugCheck.slug)
+  json(res, 200, saved)
+}
+
+async function handleTrashRemove(
+  res: ServerResponse,
+  slug: string,
+  ctx: AdminContext,
+): Promise<void> {
+  const slugCheck = validateSlug(slug)
+  if (!slugCheck.ok) return badRequest(res, slugCheck.error)
+  await ctx.store.permanentRemove(slugCheck.slug)
+  res.statusCode = 204
+  res.end()
+}
+
 async function handleUpload(
   res: ServerResponse,
   req: IncomingMessage,
@@ -161,9 +212,14 @@ async function handleUpload(
   const file = parseMultipartFile(raw, (boundary[1] || boundary[2]).trim())
   if (!file) return badRequest(res, '缺少文件字段 file')
 
-  const { url } = await uploadToSmms(ctx.token, file.data, file.filename, file.mime, {
-    fetchFn: ctx.fetchFn,
-  })
+  if (!ctx.uploader) {
+    return json(
+      res,
+      503,
+      { error: 'COS 未配置，请在项目根 .env.local 中设置 COS_SECRET_ID 等变量' },
+    )
+  }
+  const { url } = await ctx.uploader({ data: file.data, filename: file.filename, mime: file.mime })
   json(res, 200, { url })
 }
 
@@ -187,7 +243,7 @@ interface MultipartFile {
   data: Buffer
 }
 
-/** 极简 multipart 解析：仅提取名为 `file` 的单个字段（SM.MS 上传用）。 */
+/** 极简 multipart 解析：仅提取名为 `file` 的单个字段（图片上传用）。 */
 function parseMultipartFile(raw: Buffer, boundary: string): MultipartFile | null {
   const delimiter = Buffer.from(`--${boundary}`)
   const parts: Buffer[] = []
@@ -242,11 +298,14 @@ function badRequest(res: ServerResponse, message: string): void {
 function notFound(res: ServerResponse): void {
   json(res, 404, { error: '未找到' })
 }
+function conflict(res: ServerResponse, err: ConflictError): void {
+  json(res, 409, { error: err.message })
+}
 function methodNotAllowed(res: ServerResponse): void {
   res.statusCode = 405
   res.end()
 }
-function smmsError(res: ServerResponse, err: SmmsError): void {
+function uploadError(res: ServerResponse, err: CosError): void {
   const notConfigured = err.message.includes('未配置')
   json(res, notConfigured ? 503 : 502, { error: err.message })
 }

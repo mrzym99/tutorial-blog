@@ -3,7 +3,12 @@
  * 提取 frontmatter 并聚合成便于首页/标签页使用的结构。
  */
 import { createContentLoader } from 'vitepress'
-import { aggregateTags, type PostMeta, type TagAgg } from '../lib/tags'
+import {
+  aggregateTags,
+  comparePosts,
+  type PostMeta,
+  type TagAgg,
+} from '../lib/tags'
 
 export interface PostsData {
   posts: PostMeta[]
@@ -13,15 +18,22 @@ export interface PostsData {
 export default createContentLoader('posts/*.md', {
   transform(raw): PostsData {
     const posts: PostMeta[] = raw
-      .filter((d) => d.frontmatter?.title && d.frontmatter?.date)
+      .filter(
+        (d) =>
+          d.frontmatter?.title &&
+          d.frontmatter?.date &&
+          !d.frontmatter?.draft, // 草稿不进入公开数据
+      )
       .map((d) => ({
         slug: slugFromUrl(d.url),
         title: d.frontmatter.title,
         date: d.frontmatter.date,
         tags: d.frontmatter.tags,
         excerpt: d.frontmatter.excerpt,
+        draft: d.frontmatter.draft,
+        pinned: d.frontmatter.pinned,
       }))
-      .sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : 0))
+      .sort(comparePosts)
 
     return { posts, tags: aggregateTags(posts) }
   },

@@ -18,6 +18,8 @@ export interface PostMeta {
   date: string
   tags?: string[]
   excerpt?: string
+  draft?: boolean
+  pinned?: boolean
 }
 
 export interface PostRecord extends PostMeta {
@@ -25,8 +27,19 @@ export interface PostRecord extends PostMeta {
   raw: string
 }
 
+export interface TrashItem {
+  slug: string
+  title: string
+  date: string
+  /** 软删除日期（来自回收站文件名后缀），用于排序与恢复 */
+  deletedAt: string
+  srcName: string
+}
+
 const TMP_SUFFIX = '.md.tmp'
 const TRASH_DIR = '.trash'
+// 回收站文件名规范：<slug>-<YYYY-MM-DD>.md
+const TRASH_FILE_PATTERN = /^([^/]+)-(\d{4}-\d{2}-\d{2})\.md$/
 
 export class PostsStore {
   constructor(private readonly postsDir: string) {}
@@ -65,6 +78,8 @@ export class PostsStore {
         date: frontmatter.date,
         tags: frontmatter.tags,
         excerpt: frontmatter.excerpt,
+        draft: frontmatter.draft,
+        pinned: frontmatter.pinned,
       })
     }
     return metas.sort(
@@ -84,6 +99,8 @@ export class PostsStore {
         date: frontmatter?.date ?? '',
         tags: frontmatter?.tags,
         excerpt: frontmatter?.excerpt,
+        draft: frontmatter?.draft,
+        pinned: frontmatter?.pinned,
         body,
         raw,
       }
@@ -125,12 +142,105 @@ export class PostsStore {
     const dest = path.join(trash, `${checked}-${today}.md`)
     await fs.rename(src, dest)
   }
+
+  /** 列出回收站中的软删除文章，每 slug 一行（保留最新一条），按删除时间倒序。 */
+  async listTrash(): Promise<TrashItem[]> {
+    let entries: string[]
+    try {
+      entries = await fs.readdir(this.trashDir())
+    } catch (err) {
+      if (isENOENT(err)) return []
+      throw err
+    }
+    const bySlug = new Map<string, TrashItem>()
+    for (const name of entries) {
+      const m = TRASH_FILE_PATTERN.exec(name)
+      if (!m) continue
+      const slug = m[1]
+      const deletedAt = m[2]
+      const prev = bySlug.get(slug)
+      if (prev && prev.deletedAt >= deletedAt) continue // 保留最新一次软删除
+      const raw = await fs.readFile(path.join(this.trashDir(), name), 'utf8')
+      const { frontmatter } = extractFrontmatter(raw)
+      bySlug.set(slug, {
+        slug,
+        title: frontmatter?.title ?? slug,
+        date: frontmatter?.date ?? '',
+        deletedAt,
+        srcName: name,
+      })
+    }
+    return [...bySlug.values()].sort((a, b) => {
+      if (a.deletedAt !== b.deletedAt) return a.deletedAt < b.deletedAt ? 1 : -1
+      return a.slug < b.slug ? -1 : 1 // 同日按 slug 升序，保证稳定
+    })
+  }
+
+  /** 恢复软删除文章（最新一次）：移回 posts/<slug>.md；已存在同名则抛 ConflictError。 */
+  async restore(slug: string): Promise<{ slug: string; path: string }> {
+    const checked = assertValidSlug(slug)
+    const target = this.postPath(checked)
+    try {
+      await fs.access(target)
+      throw new ConflictError(`已存在同名文章「${checked}」，请先重命名或删除当前文章`)
+    } catch (err) {
+      if (err instanceof ConflictError) throw err
+      if (!isENOENT(err)) throw err
+    }
+    const src = await this.newestTrashFile(checked)
+    if (!src) throw new NotFoundError(`回收站中没有「${checked}」`)
+    await this.ensureBase()
+    await fs.rename(path.join(this.trashDir(), src), target)
+    return { slug: checked, path: target }
+  }
+
+  /** 彻底删除该 slug 的全部回收站文件（不再可恢复）。 */
+  async permanentRemove(slug: string): Promise<void> {
+    const checked = assertValidSlug(slug)
+    const files = await this.trashFilesFor(checked)
+    if (files.length === 0) throw new NotFoundError(`回收站中没有「${checked}」`)
+    for (const f of files) {
+      await fs.rm(path.join(this.trashDir(), f), { force: true })
+    }
+  }
+
+  /** 该 slug 在回收站中删除时间最新的一条文件名；无则 null。 */
+  private async newestTrashFile(slug: string): Promise<string | null> {
+    const files = await this.trashFilesFor(slug)
+    if (files.length === 0) return null
+    return files.sort((a, b) => (a > b ? -1 : a < b ? 1 : 0))[0]
+  }
+
+  /** 该 slug 在回收站中的全部文件名（按下划线名倒序）。 */
+  private async trashFilesFor(slug: string): Promise<string[]> {
+    let entries: string[]
+    try {
+      entries = await fs.readdir(this.trashDir())
+    } catch (err) {
+      if (isENOENT(err)) return []
+      throw err
+    }
+    return entries.filter((name) => TRASH_FILE_PATTERN.test(name) && slugFromTrashName(name) === slug)
+  }
+}
+
+/** 从回收站文件名解析 slug（去掉 `-YYYY-MM-DD.md` 后缀）。 */
+function slugFromTrashName(name: string): string {
+  const m = TRASH_FILE_PATTERN.exec(name)
+  return m ? m[1] : name
 }
 
 export class NotFoundError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'NotFoundError'
+  }
+}
+
+export class ConflictError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ConflictError'
   }
 }
 

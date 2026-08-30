@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
-import PostListPanel, { type ListItem } from './PostListPanel.vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import PostListPanel, { type ListItem, type TrashItem } from './PostListPanel.vue'
 import FrontmatterForm, { type DraftFrontmatter } from './FrontmatterForm.vue'
 import PostEditor from './PostEditor.vue'
 import { titleToSlug } from '../lib/slug'
@@ -13,18 +13,33 @@ interface Draft {
 }
 
 const list = ref<ListItem[]>([])
+const trash = ref<TrashItem[]>([])
 const selected = ref('')
 const draft = ref<Draft | null>(null)
 const dirty = ref(false)
 const saving = ref(false)
 const notice = ref('')
 
+// 全站已有标签（去重、排序），供 FrontmatterForm 快捷点选追加
+const allTags = computed<string[]>(() => {
+  const set = new Set<string>()
+  for (const it of list.value) for (const t of it.tags ?? []) set.add(t)
+  return [...set].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+})
+
 async function loadList() {
   list.value = await api<ListItem[]>('/api/admin/posts')
 }
 
+async function loadTrash() {
+  await api<TrashItem[]>('/api/admin/trash')
+    .then((d) => (trash.value = d))
+    .catch(() => (trash.value = []))
+}
+
 onMounted(() => {
   loadList()
+  loadTrash()
   window.addEventListener('keydown', onGlobalKeydown)
 })
 onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
@@ -52,6 +67,8 @@ async function selectPost(slug: string) {
       date: rec.frontmatter?.date ?? todayStr(),
       tags: rec.frontmatter?.tags ?? [],
       excerpt: rec.frontmatter?.excerpt ?? '',
+      draft: rec.frontmatter?.draft ?? false,
+      pinned: rec.frontmatter?.pinned ?? false,
     },
     body: rec.body ?? '',
   }
@@ -63,7 +80,14 @@ function newPost() {
   draft.value = {
     slug: '',
     slugTouched: false,
-    frontmatter: { title: '', date: todayStr(), tags: [], excerpt: '' },
+    frontmatter: {
+      title: '',
+      date: todayStr(),
+      tags: [],
+      excerpt: '',
+      draft: false,
+      pinned: false,
+    },
     body: '',
   }
   selected.value = ''
@@ -85,6 +109,10 @@ function updateDraft(field: string, value: unknown) {
     d.frontmatter.tags = Array.isArray(value) ? (value as string[]) : []
   } else if (field === 'excerpt') {
     d.frontmatter.excerpt = String(value)
+  } else if (field === 'draft') {
+    d.frontmatter.draft = Boolean(value)
+  } else if (field === 'pinned') {
+    d.frontmatter.pinned = Boolean(value)
   }
   dirty.value = true
 }
@@ -104,6 +132,11 @@ async function save() {
   }
   if (!d.frontmatter.title) {
     notice.value = '请填写标题'
+    return
+  }
+  // slug 冲突确认：目标 slug 已属于另一篇文章时，PUT 会覆盖它
+  const clash = list.value.find((it) => it.slug === d.slug && it.slug !== selected.value)
+  if (clash && !confirm(`slug「${d.slug}」已存在（${clash.title}），保存将覆盖该文章，继续吗？`)) {
     return
   }
   saving.value = true
@@ -143,7 +176,35 @@ async function removePost(slug: string) {
       selected.value = ''
     }
     await loadList()
+    await loadTrash()
     notice.value = '已删除'
+  } else {
+    const data = await res.json().catch(() => ({}))
+    notice.value = (data as { error?: string }).error || '删除失败'
+  }
+}
+
+async function restorePost(slug: string) {
+  const res = await fetch(`/api/admin/trash/${encodeURIComponent(slug)}/restore`, {
+    method: 'POST',
+  })
+  await loadList()
+  await loadTrash()
+  if (res.ok) {
+    notice.value = `已恢复「${slug}」`
+  } else {
+    const data = await res.json().catch(() => ({}))
+    notice.value = (data as { error?: string }).error || '恢复失败'
+  }
+}
+
+async function purgePost(slug: string) {
+  if (!confirm(`彻底删除「${slug}」？该操作不可恢复。`)) return
+  const res = await fetch(`/api/admin/trash/${encodeURIComponent(slug)}`, { method: 'DELETE' })
+  await loadList()
+  await loadTrash()
+  if (res.ok) {
+    notice.value = `「${slug}」已彻底删除`
   } else {
     const data = await res.json().catch(() => ({}))
     notice.value = (data as { error?: string }).error || '删除失败'
@@ -185,15 +246,23 @@ async function api<T>(path: string): Promise<T> {
       <aside class="col list-col">
         <PostListPanel
           :items="list"
+          :trash="trash"
           :selected="selected"
           @select="selectPost"
           @create="newPost"
           @remove="removePost"
+          @restore="restorePost"
+          @purge="purgePost"
         />
       </aside>
 
       <section v-if="draft" class="col main-col">
-        <FrontmatterForm :slug="draft.slug" :fm="draft.frontmatter" @input="updateDraft" />
+        <FrontmatterForm
+          :slug="draft.slug"
+          :fm="draft.frontmatter"
+          :all-tags="allTags"
+          @input="updateDraft"
+        />
         <div class="editor-cell">
           <PostEditor
             :key="draft.slug || '_new_'"
@@ -264,7 +333,7 @@ async function api<T>(path: string): Promise<T> {
   min-width: 0;
 }
 .list-col {
-  width: 260px;
+  width: 280px;
   flex: none;
   padding: 0.6rem;
   border-right: 1px solid var(--vp-c-divider);

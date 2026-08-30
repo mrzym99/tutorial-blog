@@ -4,12 +4,12 @@
  */
 import type { Plugin } from 'vite'
 import { PostsStore } from './posts-store'
-import { handleAdminRequest, ADMIN_PREFIX } from './routes'
+import { handleAdminRequest, ADMIN_PREFIX, type Uploader } from './routes'
 
 export interface AdminPluginOptions {
   postsDir: string
-  /** SMMS_TOKEN，未配置为 '' */
-  token: string
+  /** COS 上传器；未配置时为 null（上传接口 503） */
+  uploader?: Uploader | null
 }
 
 export function adminPlugin(opts: AdminPluginOptions): Plugin {
@@ -20,7 +20,7 @@ export function adminPlugin(opts: AdminPluginOptions): Plugin {
       server.middlewares.use((req, res, next) => {
         if (!(req.url ?? '').startsWith(ADMIN_PREFIX)) return next()
         // 已由 handler 写响应；出错则交给 connect 兜底
-        handleAdminRequest(req, res, { store, token: opts.token }).catch(next)
+        handleAdminRequest(req, res, { store, uploader: opts.uploader }).catch(next)
       })
     },
   }

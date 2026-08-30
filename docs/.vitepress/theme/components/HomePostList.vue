@@ -6,20 +6,17 @@ const posts = postsData.posts
 </script>
 
 <template>
-  <div class="home-posts">
-    <a
-      v-for="p in posts"
-      :key="p.slug"
-      class="post-card"
-      :href="withBase(`/posts/${p.slug}.html`)"
-    >
-      <h3>{{ p.title }}</h3>
-      <time>{{ p.date }}</time>
-      <div v-if="p.excerpt" class="excerpt">{{ p.excerpt }}</div>
-      <div v-if="p.tags && p.tags.length" class="tags">
-        <span v-for="t in p.tags" :key="t" class="tag">{{ t }}</span>
+  <div class="home-posts" aria-label="文章列表">
+    <article v-for="p in posts" :key="p.slug" class="post-card">
+      <div class="card-top">
+        <time class="date-rail">{{ p.date }}</time>
+        <a class="title" :href="withBase(`/posts/${p.slug}.html`)">{{ p.title }}</a>
       </div>
-    </a>
-    <p v-if="!posts.length">还没有文章。</p>
+      <p v-if="p.excerpt" class="excerpt">{{ p.excerpt }}</p>
+      <div v-if="p.tags && p.tags.length" class="chips">
+        <span v-for="t in p.tags" :key="t" class="chip">{{ t }}</span>
+      </div>
+    </article>
+    <p v-if="!posts.length" class="empty">还没有文章。</p>
   </div>
 </template>

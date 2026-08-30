@@ -1,3 +1,9 @@
-# 写作后台
+---
+layout: doc
+sidebar: false
+aside: false
+outline: false
+pageClass: page-admin
+---
 
 <AdminPage />

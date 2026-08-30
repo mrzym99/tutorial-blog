@@ -24,6 +24,7 @@ export default {
       if (!name.endsWith('.md') || name.startsWith('.')) continue
       const raw = await fs.readFile(path.join(postsDir, name), 'utf8')
       const { frontmatter } = extractFrontmatter(raw)
+      if (frontmatter?.draft) continue // 草稿不生成标签页面
       for (const t of frontmatter?.tags ?? []) tags.add(t)
     }
     return [...tags].map((tag) => ({ params: { tag } }))

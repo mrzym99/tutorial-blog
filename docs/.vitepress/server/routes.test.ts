@@ -19,4 +19,20 @@ describe('parseAdminRoute', () => {
     expect(parseAdminRoute('/api/admin/unknown', 'PUT')).toEqual({ type: 'notfound' })
     expect(parseAdminRoute('/api/other')).toEqual({ type: 'notfound' })
   })
+
+  it('解析回收站路由：列表/恢复/彻底删除', () => {
+    expect(parseAdminRoute('/api/admin/trash')).toEqual({ type: 'trash-list' })
+    expect(parseAdminRoute('/api/admin/trash/bye', 'POST')).toEqual({
+      type: 'trash-restore',
+      slug: 'bye',
+    })
+    expect(parseAdminRoute('/api/admin/trash/bye/restore', 'POST')).toEqual({
+      type: 'trash-restore',
+      slug: 'bye',
+    })
+    expect(parseAdminRoute('/api/admin/trash/bye', 'DELETE')).toEqual({
+      type: 'trash-remove',
+      slug: 'bye',
+    })
+  })
 })
