@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import PostListPanel, { type ListItem, type TrashItem } from './PostListPanel.vue'
+import PostList, { type ListItem } from './PostList.vue'
+import TrashList, { type TrashItem } from './TrashList.vue'
 import FrontmatterForm, { type DraftFrontmatter } from './FrontmatterForm.vue'
 import PostEditor from './PostEditor.vue'
 import { titleToSlug } from '../lib/slug'
+
+type View = 'posts' | 'trash' | 'editor'
 
 interface Draft {
   slug: string
@@ -14,6 +17,7 @@ interface Draft {
 
 const list = ref<ListItem[]>([])
 const trash = ref<TrashItem[]>([])
+const view = ref<View>('posts')
 const selected = ref('')
 const draft = ref<Draft | null>(null)
 const dirty = ref(false)
@@ -55,7 +59,24 @@ function todayStr(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+/** 离开编辑器：有未保存修改时先确认。 */
+function leaveEditor(): boolean {
+  if (!dirty.value || confirm('有未保存的修改，确定离开吗？')) {
+    draft.value = null
+    selected.value = ''
+    dirty.value = false
+    return true
+  }
+  return false
+}
+
+function goTo(next: View) {
+  if (view.value === 'editor' && !leaveEditor()) return
+  view.value = next
+}
+
 async function selectPost(slug: string) {
+  if (dirty.value && !confirm('有未保存的修改，先放弃再打开这篇吗？')) return
   const rec = await api<{ frontmatter?: Partial<DraftFrontmatter>; body?: string }>(
     `/api/admin/posts/${encodeURIComponent(slug)}`,
   )
@@ -74,9 +95,11 @@ async function selectPost(slug: string) {
   }
   selected.value = slug
   dirty.value = false
+  view.value = 'editor'
 }
 
 function newPost() {
+  if (dirty.value && !confirm('有未保存的修改，先放弃再新建吗？')) return
   draft.value = {
     slug: '',
     slugTouched: false,
@@ -92,6 +115,7 @@ function newPost() {
   }
   selected.value = ''
   dirty.value = false
+  view.value = 'editor'
 }
 
 function updateDraft(field: string, value: unknown) {
@@ -211,14 +235,6 @@ async function purgePost(slug: string) {
   }
 }
 
-function dismissDraft() {
-  if (!dirty.value || confirm('有未保存的修改，确定离开吗？')) {
-    draft.value = null
-    selected.value = ''
-    loadList()
-  }
-}
-
 async function api<T>(path: string): Promise<T> {
   const res = await fetch(path)
   if (!res.ok) {
@@ -233,30 +249,56 @@ async function api<T>(path: string): Promise<T> {
   <div class="admin">
     <header class="topbar">
       <span class="brand">写作后台</span>
-      <span v-if="dirty" class="dirty">● 未保存</span>
+
+      <nav class="tabs" aria-label="后台页面">
+        <button
+          type="button"
+          :class="{ on: view === 'posts' }"
+          :aria-current="view === 'posts' ? 'page' : undefined"
+          @click="goTo('posts')"
+        >
+          文章
+        </button>
+        <button
+          type="button"
+          :class="{ on: view === 'trash' }"
+          :aria-current="view === 'trash' ? 'page' : undefined"
+          @click="goTo('trash')"
+        >
+          回收站
+          <span v-if="trash.length" class="tab-cnt">{{ trash.length }}</span>
+        </button>
+      </nav>
+
       <span class="spacer" />
-      <button v-if="draft" type="button" :disabled="saving" @click="save">
-        {{ saving ? '保存中…' : '保存 (Ctrl+S)' }}
-      </button>
-      <button v-if="draft" type="button" class="ghost" @click="dismissDraft">关闭</button>
-      <span v-if="notice" :key="notice" class="notice">{{ notice }}</span>
+
+      <template v-if="view === 'editor'">
+        <span v-if="dirty" class="dirty">● 未保存</span>
+        <button type="button" class="ghost" :disabled="saving" @click="save">
+          {{ saving ? '保存中…' : '保存' }}
+          <kbd>⌘S</kbd>
+        </button>
+        <button type="button" class="ghost" @click="goTo('posts')">返回列表</button>
+      </template>
+      <template v-else>
+        <button type="button" class="primary" @click="newPost">＋ 新建文章</button>
+      </template>
     </header>
 
-    <div class="body">
-      <aside class="col list-col">
-        <PostListPanel
-          :items="list"
-          :trash="trash"
-          :selected="selected"
-          @select="selectPost"
-          @create="newPost"
-          @remove="removePost"
-          @restore="restorePost"
-          @purge="purgePost"
-        />
-      </aside>
-
-      <section v-if="draft" class="col main-col">
+    <main class="content">
+      <PostList
+        v-if="view === 'posts'"
+        :items="list"
+        @edit="selectPost"
+        @remove="removePost"
+      />
+      <TrashList
+        v-else-if="view === 'trash'"
+        :trash="trash"
+        @restore="restorePost"
+        @purge="purgePost"
+      />
+      <section v-if="draft" class="editor-view">
         <FrontmatterForm
           :slug="draft.slug"
           :fm="draft.frontmatter"
@@ -272,87 +314,149 @@ async function api<T>(path: string): Promise<T> {
           />
         </div>
       </section>
+    </main>
 
-      <section v-else class="empty">选择左侧文章，或点“新建文章”开始。</section>
-    </div>
+    <transition name="toast">
+      <div v-if="notice" class="toast" role="status">{{ notice }}</div>
+    </transition>
   </div>
 </template>
 
 <style scoped>
 .admin {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: calc(100vh - 60px);
   border: 1px solid var(--vp-c-divider);
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
+  background: var(--vp-c-bg);
 }
+
+/* ---- 顶部栏 ---- */
 .topbar {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.8rem;
+  gap: 0.75rem;
+  padding: 0.55rem 1rem;
   border-bottom: 1px solid var(--vp-c-divider);
+  background: var(--vp-c-bg);
 }
 .brand {
+  font-weight: 700;
+  font-size: 0.98rem;
+  letter-spacing: 0.02em;
+}
+.tabs {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin-left: 0.75rem;
+  padding: 0.18rem;
+  background: var(--vp-c-bg-soft);
+  border-radius: 9px;
+}
+.tabs button {
+  border: none;
+  background: none;
+  padding: 0.34rem 0.9rem;
+  border-radius: 7px;
+  font-size: 0.86rem;
+  color: var(--vp-c-text-2);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.tabs button.on {
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-1);
   font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.tabs .tab-cnt {
+  font-size: 0.68rem;
+  background: var(--vp-c-brand-1);
+  color: #fff;
+  border-radius: 999px;
+  padding: 0 0.42rem;
+  line-height: 1.4;
+}
+.spacer {
+  flex: 1;
 }
 .dirty {
   font-size: 0.78rem;
   color: var(--vp-c-warning-1);
 }
-.spacer {
-  flex: 1;
-}
 .topbar button {
-  padding: 0.3rem 0.9rem;
-  border: none;
-  border-radius: 6px;
-  background: var(--vp-c-brand-1);
-  color: #fff;
+  padding: 0.34rem 0.9rem;
+  border-radius: 7px;
+  font-size: 0.86rem;
   cursor: pointer;
 }
+.topbar button.primary {
+  border: none;
+  background: var(--vp-c-brand-1);
+  color: #fff;
+}
+.topbar button.primary:hover {
+  background: var(--vp-c-brand-2);
+}
 .topbar button.ghost {
-  background: none;
   border: 1px solid var(--vp-c-divider);
+  background: none;
   color: var(--vp-c-text-1);
 }
-.topbar button:disabled {
+.topbar button.ghost:disabled {
   opacity: 0.5;
 }
-.notice {
-  font-size: 0.82rem;
-  color: var(--vp-c-text-2);
+.topbar kbd {
+  font-family: inherit;
+  font-size: 0.72rem;
+  opacity: 0.75;
+  margin-left: 0.15rem;
 }
-.body {
-  display: flex;
+
+/* ---- 正文区 ---- */
+.content {
   flex: 1;
   min-height: 0;
+  overflow: auto;
+  background: var(--vp-c-bg-soft);
 }
-.col {
-  min-width: 0;
-}
-.list-col {
-  width: 280px;
-  flex: none;
-  padding: 0.6rem;
-  border-right: 1px solid var(--vp-c-divider);
-  overflow: hidden;
-}
-.main-col {
-  flex: 1;
+.editor-view {
+  height: 100%;
   display: flex;
   flex-direction: column;
+  background: var(--vp-c-bg);
 }
 .editor-cell {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  border-top: 1px solid var(--vp-c-divider);
 }
-.empty {
-  flex: 1;
-  display: grid;
-  place-items: center;
-  color: var(--vp-c-text-3);
+
+/* ---- 轻提示 toast ---- */
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: 1.5rem;
+  transform: translateX(-50%);
+  background: var(--vp-c-text-1);
+  color: var(--vp-c-bg);
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+.toast-enter-active,
+.toast-leave-active {
+  transition: opacity 0.2s, transform 0.2s;
+}
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 8px);
 }
 </style>
