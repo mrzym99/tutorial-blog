@@ -1,0 +1,20 @@
+# 密钥与环境
+.env.local
+.env.*.local
+
+# 依赖
+node_modules/
+
+# 构建产物
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+
+# 系统与编辑器
+.DS_Store
+*.local
+
+# 临时文件（posts-store 原子写
+docs/posts/.*.md.tmp
+
+# 日志
+*.log

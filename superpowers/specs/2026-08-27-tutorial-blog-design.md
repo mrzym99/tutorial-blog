@@ -8,7 +8,7 @@
 搭建一个以教程文章为主的静态博客系统，满足：
 
 1. **部署简单**：构建产物为纯静态文件，推送到远端（Cloudflare Pages）即完成部署，无需服务器。
-2. **本地写作**：本地 dev 运行时有独立的写作后台（`/admin`），支持 Markdown 编辑、实时预览、文章管理、图片上传，写好的文章以 Markdown 文件形式保存在项目文件夹内。
+2. **本地写作**：本地 dev 运行时有独立的写作后台（`/admin`），支持富文本（所见即所得）编辑、实时预览、文章管理、图片上传，写好的文章以归一化 Markdown 文件形式保存在项目文件夹内。
 3. **图床上传**：编辑器内粘贴/拖拽图片自动上传到 SM.MS 图床并插入链接，Token 只存在本地。
 4. **速度快**：dev 启动快、热更新快；线上预渲染 HTML + 客户端路由，切页不刷新。
 5. **读者侧功能**：全文搜索、标签分类、RSS 订阅、评论区（Giscus）。
@@ -24,7 +24,7 @@
 
 - 所有可测逻辑（slug 校验、frontmatter 解析、文件存储、上传代理、标签聚合）都是**纯函数/独立模块**，与 Vue 组件和 HTTP 层分离，用 vitest 单测。
 - 浏览器侧代码（admin 页面）从不接触 Token；上传请求发给本地 dev API，由 Node 侧转发 SM.MS。
-- 预览渲染复用 VitePress 自己的 Markdown 渲染器（`createMarkdownRenderer`），套 `vp-doc` 样式，保证预览与线上效果一致，不引入第二套渲染器。
+- 线上最终产物一律由 VitePress 自己的 Markdown 渲染器渲染，不引入第二套**发布级**渲染器。（`createMarkdownRenderer` 是 Node-only API，无法在浏览器 admin 内使用；写作后台的实时预览由 tiptap 所见即所得承担，存储的内容是 Markdown，线上渲染不受其影响。）
 
 ## 3. 技术栈
 
@@ -33,7 +33,8 @@
 | 站点框架 | VitePress 1.x（最新稳定版） |
 | 框架 | Vue 3 + TypeScript |
 | 测试 | vitest（最新稳定版） |
-| 包管理 | npm |
+| 富文本编辑器 | tiptap（ProseMirror 内核；官方 `@tiptap/vue-3` Vue3 绑定 + `@tiptap/markdown` 序列化，MIT 开源；可替换为其它开源方案） |
+| 包管理 | pnpm |
 | 图床 | SM.MS（`https://sm.ms/api/v2/upload`） |
 | 部署 | Cloudflare Pages（Git 连接自动构建；也支持 wrangler 手动推产物） |
 | 评论 | Giscus（GitHub Discussions 驱动，纯静态，无密钥） |
@@ -66,7 +67,7 @@ tutorial-blog/
    │  │  ├─ AdminApp.vue           # 三栏布局主界面
    │  │  ├─ PostListPanel.vue      # 左栏：文章列表 + 新建按钮
    │  │  ├─ FrontmatterForm.vue    # 顶部：标题/slug/日期/标签/摘要表单
-   │  │  └─ PostEditor.vue         # 中：textarea；右：实时预览；粘贴/拖拽上传
+   │  │  └─ PostEditor.vue         # 中：所见即所得编辑器（tiptap）；右：与线上一致的预览；粘贴/拖拽上传
    │  ├─ server/               # dev 中间件逻辑（Node 侧，仅 dev 加载）
    │  │  ├─ plugin.ts              # Vite 插件：configureServer 注册路由
    │  │  ├─ routes.ts              # HTTP 路由分发（URL 解析 → handler）
@@ -136,13 +137,13 @@ Token 管理：
 
 `docs/admin.md` 内容仅为挂载 `<AdminPage />`。
 
-- **AdminPage.vue**：检测 `import.meta.env.DEV`。生产构建下渲染提示卡片："写作后台仅在本地开发模式可用。运行 `npm run dev` 后访问 /admin。"dev 下挂载 AdminApp。
+- **AdminPage.vue**：检测 `import.meta.env.DEV`。生产构建下渲染提示卡片："写作后台仅在本地开发模式可用。运行 `pnpm dev` 后访问 /admin。"dev 下挂载 AdminApp。
 - **AdminApp.vue**：三栏布局。
   - 左栏 PostListPanel：调用 `GET /api/admin/posts` 展示文章列表（标题 + 日期），顶部"新建文章"按钮；点击打开文章；当前选中高亮。
   - 顶部 FrontmatterForm：标题、slug（标题输入时自动生成，可编辑）、日期（默认今天）、标签（逗号分隔输入）、摘要。
-  - 中栏 PostEditor：`<textarea>` 写 Markdown；Ctrl+S 触发保存（PUT）；保存成功/失败有轻提示。
-  - 右栏：实时预览。用 `createMarkdownRenderer`（从 `vitepress` 导入）渲染正文，容器套 `vp-doc` class，样式与线上文章一致。
-- **图片上传**：PostEditor 监听 textarea 的 `paste` 事件（`clipboardData.items` 取图片）和拖拽 `drop` 事件（`dataTransfer.files`）。拿到图片文件 → `POST /api/admin/upload`（FormData）→ 成功后在光标处插入 `![image](<url>)`；上传中在光标处插入占位文本 `![上传中...](url)` 并在完成后替换（简化：上传期间禁用编辑器并显示"上传中"状态条即可）；失败弹错误提示。
+  - 中栏 PostEditor：集成 tiptap 富文本编辑器（所见即所得）。编辑内容实时经 `editor.getMarkdown()`（`@tiptap/markdown`）导出为 Markdown；Ctrl+S 触发保存（PUT）；保存成功/失败有轻提示。tiptap 本身即所见即所得，**充当实时预览**：不设独立的右侧预览盘，避免在浏览器 admin 引入第二套 Markdown 渲染器。
+- **图片上传**：PostEditor 监听编辑器 `paste` 事件（`clipboardData.items` 取图片）和拖拽 `drop` 事件（`dataTransfer.files`）。拿到图片文件 → `POST /api/admin/upload`（FormData）→ 成功后在光标处插入图片节点（经 tiptap 的 image 节点命令 `setImage({ src })` 插入，落盘表现为 `![alt](url)`）；上传中显示"上传中"状态条并禁用保存；失败弹错误提示。（具体命令/节点写法随 tiptap 版本在实施时定，不影响存储与渲染端。）
+- **编辑器接入（可替换）**：tiptap 经官方 `@tiptap/vue-3`（`useEditor` + `<EditorContent>`）挂载；Markdown 支持由官方 `@tiptap/markdown` 提供——`contentType: 'markdown'` 使初始 content 按 Markdown 解析，`editor.getMarkdown()` 导出归一化 Markdown 提交 PUT。基础能力由 `@tiptap/starter-kit`（标题/列表/引用/代码块/图片等）提供。**编辑器只用做一个可替换的适配层**：改其它开源富文本 Markdown 编辑器时，只需重写 `PostEditor.vue` 的"编辑↔Markdown"封装，存储格式、`/api/admin`、渲染端均不受影响。（`@tiptap/markdown` 序列化对常规博客结构保真完整；仅极复杂嵌套结构可能丢少数字面细节，本项目内容模型无此需求。）
 - 新建文章流程：点"新建"→ 表单填标题（slug 自动生成）→ 编辑正文 → Ctrl+S 首次保存即创建文件。
 
 ## 8. 读者侧功能
@@ -158,7 +159,7 @@ Token 管理：
 
 ## 9. 部署（Cloudflare Pages）
 
-- 构建命令：`npm run build`（= `vitepress build docs`）。
+- 构建命令：`pnpm build`（= `vitepress build docs`）。
 - 输出目录：`docs/.vitepress/dist`。
 - Node 版本：20（Pages 设置或 `NODE_VERSION=20` 环境变量）。
 - base 路径：`/`（Cloudflare Pages 自有域名，无需子路径前缀）。
@@ -183,12 +184,13 @@ Token 管理：
 
 ## 11. 全局约束
 
-- Node ≥ 20；npm 作为包管理器。
+- Node ≥ 20；pnpm 作为包管理器。
 - VitePress 1.x 最新稳定版；Vue 3；TypeScript；vitest 最新稳定版。
 - 任何密钥（SMMS_TOKEN）不得出现在浏览器代码、构建产物、Git 提交中；`.env.local` 必须在 `.gitignore`。
 - 所有写盘路径必须经过 slug 校验。
 - 管理功能（API + 完整 admin UI）只能在 dev 形态可用；build 产物中 admin 页只显示提示。
-- 不引入第二套 Markdown 渲染器（预览用 VitePress 的 `createMarkdownRenderer`）。
+- 富文本编辑器（tiptap）仅挂在写作后台；线上 admin 页只渲染"仅本地可用"提示，不挂载编辑器组件（编辑器依赖只在开发态生效）。
+- 不引入第二套**发布级** Markdown 渲染器：线上最终产物与右栏预览一律以 VitePress 的 `createMarkdownRenderer` 为准；编辑器可用自身引擎仅做编辑态所见即所得渲染。
 - 部署目标 Cloudflare Pages，base 为 `/`。
 - 文章源文件一律存放在 `docs/posts/`，删除进入 `docs/posts/.trash/`。
 
@@ -199,4 +201,4 @@ Token 管理：
 - 不做在线后台的线上版本（admin 不上线）。
 - 不做第二种图床（只接 SM.MS；上传模块边界清晰，将来可加）。
 - 不做评论管理后台、访问统计、站点地图以外的 SEO 工具（sitemap 如需可后加）。
-- 不做 Markdown 所见即所得富文本（纯 textarea + 预览）。
+- 不自研编辑器核心：富文本编辑用开源编辑器（tiptap）封装为一个可替换适配层，不做零投入重写一套 WYSIWYG/ProseMirror 引擎。
