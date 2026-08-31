@@ -1,35 +1,31 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import PostList, { type ListItem } from './PostList.vue'
 import TrashList, { type TrashItem } from './TrashList.vue'
-import FrontmatterForm, { type DraftFrontmatter } from './FrontmatterForm.vue'
-import PostEditor from './PostEditor.vue'
-import { titleToSlug } from '../lib/slug'
 
-type View = 'posts' | 'trash' | 'editor'
+type View = 'posts' | 'trash'
 
 interface Draft {
   slug: string
   slugTouched: boolean
-  frontmatter: DraftFrontmatter
+  frontmatter: {
+    title: string
+    date: string
+    tags: string[]
+    excerpt: string
+    draft: boolean
+    pinned: boolean
+  }
   body: string
 }
 
 const list = ref<ListItem[]>([])
 const trash = ref<TrashItem[]>([])
 const view = ref<View>('posts')
-const selected = ref('')
-const draft = ref<Draft | null>(null)
-const dirty = ref(false)
-const saving = ref(false)
 const notice = ref('')
 
-// 全站已有标签（去重、排序），供 FrontmatterForm 快捷点选追加
-const allTags = computed<string[]>(() => {
-  const set = new Set<string>()
-  for (const it of list.value) for (const t of it.tags ?? []) set.add(t)
-  return [...set].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
-})
+// 编辑器页的草稿中转 key
+const DRAFT_KEY = 'admin-draft'
 
 async function loadList() {
   list.value = await api<ListItem[]>('/api/admin/posts')
@@ -44,43 +40,26 @@ async function loadTrash() {
 onMounted(() => {
   loadList()
   loadTrash()
-  window.addEventListener('keydown', onGlobalKeydown)
+  // 从编辑器标签返回时刷新列表，保证标题/置顶等改动即时可见
+  window.addEventListener('focus', loadList)
 })
-onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
-
-function onGlobalKeydown(e: KeyboardEvent) {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-    e.preventDefault()
-    save()
-  }
-}
+onBeforeUnmount(() => window.removeEventListener('focus', loadList))
 
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-/** 离开编辑器：有未保存修改时先确认。 */
-function leaveEditor(): boolean {
-  if (!dirty.value || confirm('有未保存的修改，确定离开吗？')) {
-    draft.value = null
-    selected.value = ''
-    dirty.value = false
-    return true
-  }
-  return false
-}
-
-function goTo(next: View) {
-  if (view.value === 'editor' && !leaveEditor()) return
-  view.value = next
+/** 把草稿写入 sessionStorage 并在当前标签跳转到全屏编辑器页。 */
+function openEditor(draft: Draft) {
+  sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+  location.href = '/admin-edit'
 }
 
 async function selectPost(slug: string) {
-  if (dirty.value && !confirm('有未保存的修改，先放弃再打开这篇吗？')) return
-  const rec = await api<{ frontmatter?: Partial<DraftFrontmatter>; body?: string }>(
+  const rec = await api<{ frontmatter?: Partial<Draft['frontmatter']>; body?: string }>(
     `/api/admin/posts/${encodeURIComponent(slug)}`,
   )
-  draft.value = {
+  const draft: Draft = {
     slug,
     slugTouched: true,
     frontmatter: {
@@ -93,14 +72,11 @@ async function selectPost(slug: string) {
     },
     body: rec.body ?? '',
   }
-  selected.value = slug
-  dirty.value = false
-  view.value = 'editor'
+  openEditor(draft)
 }
 
 function newPost() {
-  if (dirty.value && !confirm('有未保存的修改，先放弃再新建吗？')) return
-  draft.value = {
+  const draft: Draft = {
     slug: '',
     slugTouched: false,
     frontmatter: {
@@ -113,92 +89,13 @@ function newPost() {
     },
     body: '',
   }
-  selected.value = ''
-  dirty.value = false
-  view.value = 'editor'
-}
-
-function updateDraft(field: string, value: unknown) {
-  if (!draft.value) return
-  const d = draft.value
-  if (field === 'slug') {
-    d.slug = String(value)
-    d.slugTouched = d.slug !== titleToSlug(d.frontmatter.title)
-  } else if (field === 'title') {
-    d.frontmatter.title = String(value)
-    if (!d.slugTouched) d.slug = titleToSlug(d.frontmatter.title)
-  } else if (field === 'date') {
-    d.frontmatter.date = String(value)
-  } else if (field === 'tags') {
-    d.frontmatter.tags = Array.isArray(value) ? (value as string[]) : []
-  } else if (field === 'excerpt') {
-    d.frontmatter.excerpt = String(value)
-  } else if (field === 'draft') {
-    d.frontmatter.draft = Boolean(value)
-  } else if (field === 'pinned') {
-    d.frontmatter.pinned = Boolean(value)
-  }
-  dirty.value = true
-}
-
-function onBodyChange(md: string) {
-  if (!draft.value) return
-  draft.value.body = md
-  dirty.value = true
-}
-
-async function save() {
-  if (!draft.value || saving.value) return
-  const d = draft.value
-  if (!d.slug) {
-    notice.value = '请填写 slug'
-    return
-  }
-  if (!d.frontmatter.title) {
-    notice.value = '请填写标题'
-    return
-  }
-  // slug 冲突确认：目标 slug 已属于另一篇文章时，PUT 会覆盖它
-  const clash = list.value.find((it) => it.slug === d.slug && it.slug !== selected.value)
-  if (clash && !confirm(`slug「${d.slug}」已存在（${clash.title}），保存将覆盖该文章，继续吗？`)) {
-    return
-  }
-  saving.value = true
-  try {
-    const res = await fetch(`/api/admin/posts/${encodeURIComponent(d.slug)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        frontmatter: d.frontmatter,
-        body: d.body,
-      }),
-    })
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      notice.value = (data as { error?: string }).error || '保存失败'
-      return
-    }
-    const saved = (await res.json()) as { slug: string }
-    selected.value = saved.slug
-    if (!d.slugTouched && d.slug !== saved.slug) {
-      d.slug = saved.slug
-    }
-    await loadList()
-    dirty.value = false
-    notice.value = '已保存'
-  } finally {
-    saving.value = false
-  }
+  openEditor(draft)
 }
 
 async function removePost(slug: string) {
   if (!confirm(`删除“${slug}”？会移入回收站。`)) return
   const res = await fetch(`/api/admin/posts/${encodeURIComponent(slug)}`, { method: 'DELETE' })
   if (res.ok) {
-    if (selected.value === slug) {
-      draft.value = null
-      selected.value = ''
-    }
     await loadList()
     await loadTrash()
     notice.value = '已删除'
@@ -255,7 +152,7 @@ async function api<T>(path: string): Promise<T> {
           type="button"
           :class="{ on: view === 'posts' }"
           :aria-current="view === 'posts' ? 'page' : undefined"
-          @click="goTo('posts')"
+          @click="view = 'posts'"
         >
           文章
         </button>
@@ -263,7 +160,7 @@ async function api<T>(path: string): Promise<T> {
           type="button"
           :class="{ on: view === 'trash' }"
           :aria-current="view === 'trash' ? 'page' : undefined"
-          @click="goTo('trash')"
+          @click="view = 'trash'"
         >
           回收站
           <span v-if="trash.length" class="tab-cnt">{{ trash.length }}</span>
@@ -272,48 +169,17 @@ async function api<T>(path: string): Promise<T> {
 
       <span class="spacer" />
 
-      <template v-if="view === 'editor'">
-        <span v-if="dirty" class="dirty">● 未保存</span>
-        <button type="button" class="ghost" :disabled="saving" @click="save">
-          {{ saving ? '保存中…' : '保存' }}
-          <kbd>⌘S</kbd>
-        </button>
-        <button type="button" class="ghost" @click="goTo('posts')">返回列表</button>
-      </template>
-      <template v-else>
-        <button type="button" class="primary" @click="newPost">＋ 新建文章</button>
-      </template>
+      <button type="button" class="primary" @click="newPost">＋ 新建文章</button>
     </header>
 
     <main class="content">
-      <PostList
-        v-if="view === 'posts'"
-        :items="list"
-        @edit="selectPost"
-        @remove="removePost"
-      />
+      <PostList v-if="view === 'posts'" :items="list" @edit="selectPost" @remove="removePost" />
       <TrashList
-        v-else-if="view === 'trash'"
+        v-else
         :trash="trash"
         @restore="restorePost"
         @purge="purgePost"
       />
-      <section v-if="draft" class="editor-view">
-        <FrontmatterForm
-          :slug="draft.slug"
-          :fm="draft.frontmatter"
-          :all-tags="allTags"
-          @input="updateDraft"
-        />
-        <div class="editor-cell">
-          <PostEditor
-            :key="draft.slug || '_new_'"
-            :model-value="draft.body"
-            @update:model-value="onBodyChange"
-            @notice="(m) => (notice = m)"
-          />
-        </div>
-      </section>
     </main>
 
     <transition name="toast">
@@ -385,10 +251,6 @@ async function api<T>(path: string): Promise<T> {
 .spacer {
   flex: 1;
 }
-.dirty {
-  font-size: 0.78rem;
-  color: var(--vp-c-warning-1);
-}
 .topbar button {
   padding: 0.34rem 0.9rem;
   border-radius: 7px;
@@ -403,20 +265,6 @@ async function api<T>(path: string): Promise<T> {
 .topbar button.primary:hover {
   background: var(--vp-c-brand-2);
 }
-.topbar button.ghost {
-  border: 1px solid var(--vp-c-divider);
-  background: none;
-  color: var(--vp-c-text-1);
-}
-.topbar button.ghost:disabled {
-  opacity: 0.5;
-}
-.topbar kbd {
-  font-family: inherit;
-  font-size: 0.72rem;
-  opacity: 0.75;
-  margin-left: 0.15rem;
-}
 
 /* ---- 正文区 ---- */
 .content {
@@ -424,17 +272,6 @@ async function api<T>(path: string): Promise<T> {
   min-height: 0;
   overflow: auto;
   background: var(--vp-c-bg-soft);
-}
-.editor-view {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: var(--vp-c-bg);
-}
-.editor-cell {
-  flex: 1;
-  min-height: 0;
-  border-top: 1px solid var(--vp-c-divider);
 }
 
 /* ---- 轻提示 toast ---- */

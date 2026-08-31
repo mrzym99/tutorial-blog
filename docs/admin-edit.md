@@ -2,4 +2,4 @@
 layout: false
 ---
 
-<AdminPage />
+<AdminEditorPage />
