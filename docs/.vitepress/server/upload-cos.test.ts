@@ -82,7 +82,7 @@ describe('createCosUploader', () => {
     const params = client.calls[0]
     expect(params.Bucket).toBe('blog-1250000000')
     expect(params.Region).toBe('ap-guangzhou')
-    expect(params.ACL).toBe('private')
+    expect(params.ACL).toBe('public-read')
     // Body 必须是上传的真实字节
     expect((params.Body as Buffer).toString()).toBe('img')
   })

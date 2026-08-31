@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import AdminApp from './AdminApp.vue'
+import NaiveProvider from './NaiveProvider.vue'
 
 // 写作后台仅在本地开发模式可用；生产构建只渲染提示语。
 const isDev = import.meta.env.DEV
 </script>
 
 <template>
-  <div v-if="isDev">
+  <NaiveProvider v-if="isDev">
     <AdminApp />
-  </div>
+  </NaiveProvider>
   <div v-else class="prod-notice">
     <h2>写作后台仅在本地开发模式可用</h2>
     <p>运行 <code>pnpm dev</code> 后访问 /admin 开始写作。</p>

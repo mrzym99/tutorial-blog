@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { NForm, NFormItem, NInput, NDatePicker, NSwitch, NTag, NButton } from 'naive-ui'
 
 export interface DraftFrontmatter {
   title: string
@@ -42,119 +43,135 @@ function removeTag(t: string): void {
 const suggestions = computed(() =>
   (props.allTags ?? []).filter((t) => !(props.fm.tags ?? []).includes(t)),
 )
+
+// ---------- 日期：YYYY-MM-DD <-> 时间戳 互转 ----------
+// naive-ui 的 value 用时间戳，显示格式由 format 指定；业务层存 YYYY-MM-DD。
+function dateToTs(dateStr: string): number | null {
+  if (!dateStr) return null
+  const t = new Date(`${dateStr}T00:00:00`).getTime()
+  return Number.isNaN(t) ? null : t
+}
+
+function tsToDate(ts: number | null): string {
+  if (ts == null) return props.fm.date
+  const d = new Date(ts)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
 </script>
 
 <template>
-  <form class="fm" @submit.prevent>
+  <n-form class="fm" :show-label="false" label-placement="top" @submit.prevent>
     <div class="row top">
-      <label>
-        标题
-        <input
+      <n-form-item label="标题" class="field grow">
+        <n-input
           :value="fm.title"
-          @input="emit('input', 'title', ($event.target as HTMLInputElement).value)"
+          placeholder="标题"
+          @update:value="(v) => emit('input', 'title', v)"
         />
-      </label>
-      <label>
-        slug
-        <input
+      </n-form-item>
+      <n-form-item label="slug" class="field">
+        <n-input
           :value="slug"
-          @input="emit('input', 'slug', ($event.target as HTMLInputElement).value)"
+          placeholder="slug"
+          @update:value="(v) => emit('input', 'slug', v)"
         />
-      </label>
-      <label>
-        日期
-        <input
+      </n-form-item>
+      <n-form-item label="日期" class="field date">
+        <n-date-picker
           type="date"
-          :value="fm.date"
-          @input="emit('input', 'date', ($event.target as HTMLInputElement).value)"
+          format="yyyy-MM-dd"
+          :value="dateToTs(fm.date)"
+          @update:value="(ts: number | null) => emit('input', 'date', tsToDate(ts))"
         />
-      </label>
-      <label>
-        摘要
-        <input
+      </n-form-item>
+      <n-form-item label="摘要" class="field grow">
+        <n-input
           :value="fm.excerpt ?? ''"
-          @input="emit('input', 'excerpt', ($event.target as HTMLInputElement).value)"
+          placeholder="摘要（选填）"
+          @update:value="(v) => emit('input', 'excerpt', v)"
         />
-      </label>
+      </n-form-item>
     </div>
 
     <div class="tags-field">
       <span class="lbl">标签</span>
       <div class="chips">
-        <span v-for="t in fm.tags ?? []" :key="t" class="chip">
+        <n-tag
+          v-for="t in fm.tags ?? []"
+          :key="t"
+          size="small"
+          closable
+          type="primary"
+          :bordered="false"
+          @close="removeTag(t)"
+        >
           {{ t }}
-          <button type="button" title="移除" @click="removeTag(t)">×</button>
-        </span>
-        <input
-          v-model="newTag"
+        </n-tag>
+        <n-input
+          v-model:value="newTag"
           class="tag-input"
+          size="small"
           placeholder="回车添加"
           @keydown.enter.prevent="addTag(newTag)"
         />
       </div>
       <div v-if="suggestions.length" class="quick">
         <span class="label">已有：</span>
-        <button
+        <n-button
           v-for="t in suggestions"
           :key="t"
-          type="button"
-          class="suggest"
+          size="tiny"
+          quaternary
+          type="primary"
           @click="addTag(t)"
         >
           + {{ t }}
-        </button>
+        </n-button>
       </div>
     </div>
 
     <div class="checks">
       <label class="check">
-        <input
-          type="checkbox"
-          :checked="fm.draft"
-          @change="($event) => emit('input', 'draft', ($event.target as HTMLInputElement).checked)"
+        <n-switch
+          size="small"
+          :value="!!fm.draft"
+          @update:value="(v) => emit('input', 'draft', v)"
         />
-        草稿（存后不公开，取消即发布）
+        <span>草稿（存后不公开，取消即发布）</span>
       </label>
       <label class="check">
-        <input
-          type="checkbox"
-          :checked="fm.pinned"
-          @change="($event) => emit('input', 'pinned', ($event.target as HTMLInputElement).checked)"
+        <n-switch
+          size="small"
+          :value="!!fm.pinned"
+          @update:value="(v) => emit('input', 'pinned', v)"
         />
-        置顶（列表排最前）
+        <span>置顶（列表排最前）</span>
       </label>
     </div>
-  </form>
+  </n-form>
 </template>
 
 <style scoped>
 .fm {
-  padding: 0.6rem;
+  padding: 0.6rem 0.6rem 0.9rem;
   border-bottom: 1px solid var(--vp-c-divider);
 }
 .row {
   display: grid;
   gap: 0.6rem;
-  align-items: end;
 }
 .top {
   grid-template-columns: 1.6fr 1.2fr 0.9fr 1.4fr;
+  align-items: start;
 }
-label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  font-size: 0.78rem;
-  color: var(--vp-c-text-3);
+.row :deep(.n-form-item) {
+  --n-blank-height: 0px;
 }
-input {
-  width: 100%;
-  padding: 0.3rem 0.5rem;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 6px;
-  background: var(--vp-c-bg);
-  color: var(--vp-c-text-1);
-  font-size: 0.9rem;
+.row :deep(.n-form-item-feedback) {
+  display: none;
 }
 
 /* 标签 chip */
@@ -164,42 +181,20 @@ input {
 .tags-field .lbl {
   font-size: 0.78rem;
   color: var(--vp-c-text-3);
+  margin-right: 0.5rem;
 }
 .chips {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
-  margin-top: 0.2rem;
-}
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  background: var(--blog-accent-soft, #e6f0ec);
-  color: var(--blog-accent-deep, #1f5c4e);
-  border-radius: 6px;
-  padding: 0.15rem 0.4rem 0.15rem 0.55rem;
-  font-size: 0.82rem;
-}
-.chip button {
-  border: none;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font-size: 0.9rem;
-  line-height: 1;
-  padding: 0;
-}
-.chip button:hover {
-  color: #c03;
 }
 .tag-input {
   flex: 1;
   min-width: 8rem;
 }
 .quick {
-  margin-top: 0.3rem;
+  margin-top: 0.35rem;
   display: flex;
   flex-wrap: wrap;
   gap: 0.3rem;
@@ -209,33 +204,17 @@ input {
   font-size: 0.75rem;
   color: var(--vp-c-text-3);
 }
-.suggest {
-  border: 1px dashed var(--vp-c-divider);
-  background: transparent;
-  color: var(--vp-c-text-2);
-  border-radius: 999px;
-  padding: 0.05rem 0.55rem;
-  font-size: 0.78rem;
-  cursor: pointer;
-}
-.suggest:hover {
-  color: var(--vp-c-brand-1);
-  border-color: var(--vp-c-brand-1);
-}
 
 .checks {
-  margin-top: 0.6rem;
+  margin-top: 0.9rem;
   display: flex;
   gap: 1.2rem;
 }
 .check {
-  flex-direction: row;
+  display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.45rem;
   font-size: 0.84rem;
   color: var(--vp-c-text-2);
-}
-.check input {
-  width: auto;
 }
 </style>

@@ -1,9 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { NButton, NTabs, NTabPane } from 'naive-ui'
+import { useMessage, useDialog } from 'naive-ui'
 import PostList, { type ListItem } from './PostList.vue'
 import TrashList, { type TrashItem } from './TrashList.vue'
 
 type View = 'posts' | 'trash'
+
+const message = useMessage()
+const dialog = useDialog()
 
 interface Draft {
   slug: string
@@ -22,7 +27,6 @@ interface Draft {
 const list = ref<ListItem[]>([])
 const trash = ref<TrashItem[]>([])
 const view = ref<View>('posts')
-const notice = ref('')
 
 // 编辑器页的草稿中转 key
 const DRAFT_KEY = 'admin-draft'
@@ -93,16 +97,24 @@ function newPost() {
 }
 
 async function removePost(slug: string) {
-  if (!confirm(`删除“${slug}”？会移入回收站。`)) return
-  const res = await fetch(`/api/admin/posts/${encodeURIComponent(slug)}`, { method: 'DELETE' })
-  if (res.ok) {
-    await loadList()
-    await loadTrash()
-    notice.value = '已删除'
-  } else {
-    const data = await res.json().catch(() => ({}))
-    notice.value = (data as { error?: string }).error || '删除失败'
-  }
+  dialog.warning({
+    title: '移入回收站',
+    content: `删除「${slug}」？删除后会移入回收站，可随时恢复。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    async onPositiveClick() {
+      const res = await fetch(`/api/admin/posts/${encodeURIComponent(slug)}`, { method: 'DELETE' })
+      if (res.ok) {
+        await loadList()
+        await loadTrash()
+        message.success('已删除')
+      } else {
+        const data = await res.json().catch(() => ({}))
+        message.error((data as { error?: string }).error || '删除失败')
+      }
+      return true
+    },
+  })
 }
 
 async function restorePost(slug: string) {
@@ -112,24 +124,32 @@ async function restorePost(slug: string) {
   await loadList()
   await loadTrash()
   if (res.ok) {
-    notice.value = `已恢复「${slug}」`
+    message.success(`已恢复「${slug}」`)
   } else {
     const data = await res.json().catch(() => ({}))
-    notice.value = (data as { error?: string }).error || '恢复失败'
+    message.error((data as { error?: string }).error || '恢复失败')
   }
 }
 
-async function purgePost(slug: string) {
-  if (!confirm(`彻底删除「${slug}」？该操作不可恢复。`)) return
-  const res = await fetch(`/api/admin/trash/${encodeURIComponent(slug)}`, { method: 'DELETE' })
-  await loadList()
-  await loadTrash()
-  if (res.ok) {
-    notice.value = `「${slug}」已彻底删除`
-  } else {
-    const data = await res.json().catch(() => ({}))
-    notice.value = (data as { error?: string }).error || '删除失败'
-  }
+function purgePost(slug: string) {
+  dialog.warning({
+    title: '彻底删除',
+    content: `彻底删除「${slug}」？该操作不可恢复。`,
+    positiveText: '彻底删除',
+    negativeText: '取消',
+    async onPositiveClick() {
+      const res = await fetch(`/api/admin/trash/${encodeURIComponent(slug)}`, { method: 'DELETE' })
+      await loadList()
+      await loadTrash()
+      if (res.ok) {
+        message.success(`「${slug}」已彻底删除`)
+      } else {
+        const data = await res.json().catch(() => ({}))
+        message.error((data as { error?: string }).error || '删除失败')
+      }
+      return true
+    },
+  })
 }
 
 async function api<T>(path: string): Promise<T> {
@@ -147,29 +167,19 @@ async function api<T>(path: string): Promise<T> {
     <header class="topbar">
       <span class="brand">写作后台</span>
 
-      <nav class="tabs" aria-label="后台页面">
-        <button
-          type="button"
-          :class="{ on: view === 'posts' }"
-          :aria-current="view === 'posts' ? 'page' : undefined"
-          @click="view = 'posts'"
-        >
-          文章
-        </button>
-        <button
-          type="button"
-          :class="{ on: view === 'trash' }"
-          :aria-current="view === 'trash' ? 'page' : undefined"
-          @click="view = 'trash'"
-        >
-          回收站
-          <span v-if="trash.length" class="tab-cnt">{{ trash.length }}</span>
-        </button>
-      </nav>
+      <n-tabs
+        class="tabs"
+        type="segment"
+        :value="view"
+        @update:value="(v) => (view = v as View)"
+      >
+        <n-tab-pane name="posts" :tab="`文章（${list.length}）`" />
+        <n-tab-pane name="trash" :tab="`回收站${trash.length ? '（' + trash.length + '）' : ''}`" />
+      </n-tabs>
 
       <span class="spacer" />
 
-      <button type="button" class="primary" @click="newPost">＋ 新建文章</button>
+      <n-button type="primary" @click="newPost">＋ 新建文章</n-button>
     </header>
 
     <main class="content">
@@ -181,10 +191,6 @@ async function api<T>(path: string): Promise<T> {
         @purge="purgePost"
       />
     </main>
-
-    <transition name="toast">
-      <div v-if="notice" class="toast" role="status">{{ notice }}</div>
-    </transition>
   </div>
 </template>
 
@@ -213,57 +219,13 @@ async function api<T>(path: string): Promise<T> {
   font-weight: 700;
   font-size: 0.98rem;
   letter-spacing: 0.02em;
+  margin-right: 0.25rem;
 }
 .tabs {
-  display: inline-flex;
-  gap: 0.25rem;
-  margin-left: 0.75rem;
-  padding: 0.18rem;
-  background: var(--vp-c-bg-soft);
-  border-radius: 9px;
-}
-.tabs button {
-  border: none;
-  background: none;
-  padding: 0.34rem 0.9rem;
-  border-radius: 7px;
-  font-size: 0.86rem;
-  color: var(--vp-c-text-2);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-.tabs button.on {
-  background: var(--vp-c-bg);
-  color: var(--vp-c-text-1);
-  font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-}
-.tabs .tab-cnt {
-  font-size: 0.68rem;
-  background: var(--vp-c-brand-1);
-  color: #fff;
-  border-radius: 999px;
-  padding: 0 0.42rem;
-  line-height: 1.4;
+  margin-right: 0.25rem;
 }
 .spacer {
   flex: 1;
-}
-.topbar button {
-  padding: 0.34rem 0.9rem;
-  border-radius: 7px;
-  font-size: 0.86rem;
-  cursor: pointer;
-}
-.topbar button.primary {
-  border: none;
-  background: var(--vp-c-brand-1);
-  color: #fff;
-}
-.topbar button.primary:hover {
-  background: var(--vp-c-brand-2);
 }
 
 /* ---- 正文区 ---- */
@@ -272,28 +234,5 @@ async function api<T>(path: string): Promise<T> {
   min-height: 0;
   overflow: auto;
   background: var(--vp-c-bg-soft);
-}
-
-/* ---- 轻提示 toast ---- */
-.toast {
-  position: absolute;
-  left: 50%;
-  bottom: 1.5rem;
-  transform: translateX(-50%);
-  background: var(--vp-c-text-1);
-  color: var(--vp-c-bg);
-  padding: 0.45rem 1rem;
-  border-radius: 999px;
-  font-size: 0.85rem;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-}
-.toast-enter-active,
-.toast-leave-active {
-  transition: opacity 0.2s, transform 0.2s;
-}
-.toast-enter-from,
-.toast-leave-to {
-  opacity: 0;
-  transform: translate(-50%, 8px);
 }
 </style>

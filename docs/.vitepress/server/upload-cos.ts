@@ -128,8 +128,8 @@ export function createCosUploader(
       Key: key,
       Body: file.data,
       ContentType: file.mime || 'application/octet-stream',
-      // 默认私有 Bucket；图片要可访问需 CDN 私有回源或另设 ACL
-      ACL: 'private' as const,
+      // 图片需公读才能被浏览器直接访问；Bucket 设为「私有写、公开读」对象级保持一致
+      ACL: 'public-read' as const,
     }
     try {
       await new Promise<void>((resolve, reject) => {

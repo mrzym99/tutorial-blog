@@ -140,7 +140,7 @@ async function handleSave(
 
   let parsed: any
   try {
-    parsed = JSON.parse(await readBody(req))
+    parsed = JSON.parse((await readBody(req)).toString('utf8'))
   } catch {
     return badRequest(res, '请求体不是合法 JSON')
   }
@@ -208,7 +208,7 @@ async function handleUpload(
   const boundary = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i)
   if (!boundary) return badRequest(res, '缺少 multipart boundary')
 
-  const raw = Buffer.from(await readBody(req))
+  const raw = await readBody(req)
   const file = parseMultipartFile(raw, (boundary[1] || boundary[2]).trim())
   if (!file) return badRequest(res, '缺少文件字段 file')
 
@@ -279,10 +279,11 @@ function parseMultipartFile(raw: Buffer, boundary: string): MultipartFile | null
   return null
 }
 
-async function readBody(req: IncomingMessage): Promise<string> {
+/** 原样读取请求体字节（不转码）。文本接口需字符串时由调用方自行 toString。 */
+async function readBody(req: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = []
   for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
-  return Buffer.concat(chunks).toString('utf8')
+  return Buffer.concat(chunks)
 }
 
 function json(res: ServerResponse, status: number, data: JSONValue): void {
