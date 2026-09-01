@@ -1,47 +1,8 @@
-/* 站点样式补充：首页文章卡片等 */
-.home-posts {
-  display: grid;
-  gap: 1rem;
-}
+/* 站点样式补充 */
 
-.home-posts .post-card {
-  display: block;
-  padding: 1rem 1.25rem;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 8px;
-  transition: border-color 0.2s, box-shadow 0.2s;
-  text-decoration: none;
-  color: inherit;
-}
-.home-posts .post-card:hover {
-  border-color: var(--vp-c-brand-1);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-}
-.post-card h3 {
-  margin: 0 0 0.5rem;
-  font-size: 1.1rem;
-  color: var(--vp-c-text-1);
-}
-.post-card time {
-  font-size: 0.82rem;
-  color: var(--vp-c-text-3);
-}
-.post-card .tags {
-  margin-top: 0.5rem;
-}
-.post-card .tag {
-  display: inline-block;
-  margin-right: 0.4rem;
-  padding: 0.1rem 0.5rem;
-  border-radius: 999px;
-  background: var(--vp-c-bg-soft);
-  color: var(--vp-c-brand-1);
-  font-size: 0.75rem;
-}
-.post-card .excerpt {
-  margin-top: 0.5rem;
-  color: var(--vp-c-text-2);
-  font-size: 0.9rem;
+/* 首页卡片列表使用 100vw 满铺布局，防止出现横向滚动条 */
+body {
+  overflow-x: clip;
 }
 
 .tag-list li {

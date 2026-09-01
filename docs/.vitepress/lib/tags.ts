@@ -5,7 +5,7 @@ import type { PostFrontmatter } from './frontmatter'
 
 export type PostMeta = Pick<
   PostFrontmatter,
-  'title' | 'date' | 'tags' | 'excerpt' | 'draft' | 'pinned'
+  'title' | 'date' | 'tags' | 'excerpt' | 'cover' | 'draft' | 'pinned'
 > & {
   slug: string
 }

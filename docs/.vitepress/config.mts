@@ -62,10 +62,6 @@ export default defineConfig({
         uploader: buildUploader(),
       }),
     ],
-    // 写作时不要因 posts/ 文件变化触发页面整体热更新
-    server: {
-      watch: { ignored: ["**/posts/**"] },
-    },
   },
 
   themeConfig: {
@@ -118,6 +114,7 @@ async function collectPostMetas(docsDir: string): Promise<PostMeta[]> {
       date: frontmatter.date,
       tags: frontmatter.tags,
       excerpt: frontmatter.excerpt,
+      cover: frontmatter.cover,
       draft: frontmatter.draft,
       pinned: frontmatter.pinned,
     });

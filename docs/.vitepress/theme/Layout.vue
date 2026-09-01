@@ -1,22 +1,16 @@
 <script setup lang="ts">
-import DefaultTheme from 'vitepress/theme'
-import { useData } from 'vitepress'
-import { computed } from 'vue'
-import GiscusComment from './components/GiscusComment.vue'
-import SiteSidebar from './components/SiteSidebar.vue'
+import DefaultTheme from "vitepress/theme";
+import { useData } from "vitepress";
+import { computed } from "vue";
+import GiscusComment from "./components/GiscusComment.vue";
 
-const { page } = useData()
+const { page } = useData();
 // 仅文章页（posts/）挂评论区
-const isPost = computed(() =>
-  Boolean(page.value.relativePath?.startsWith('posts/')),
-)
+const isPost = computed(() => Boolean(page.value.relativePath?.startsWith("posts/")));
 </script>
 
 <template>
   <DefaultTheme.Layout>
-    <template #sidebar>
-      <SiteSidebar />
-    </template>
     <template #doc-after>
       <GiscusComment v-if="isPost" />
     </template>

@@ -18,6 +18,7 @@ interface Draft {
     date: string
     tags: string[]
     excerpt: string
+    cover: string
     draft: boolean
     pinned: boolean
   }
@@ -65,6 +66,7 @@ async function selectPost(slug: string) {
     date?: string
     tags?: string[]
     excerpt?: string
+    cover?: string
     draft?: boolean
     pinned?: boolean
     body?: string
@@ -77,6 +79,7 @@ async function selectPost(slug: string) {
       date: rec.date ?? todayStr(),
       tags: rec.tags ?? [],
       excerpt: rec.excerpt ?? '',
+      cover: rec.cover ?? '',
       draft: rec.draft ?? false,
       pinned: rec.pinned ?? false,
     },
@@ -94,6 +97,7 @@ function newPost() {
       date: todayStr(),
       tags: [],
       excerpt: '',
+      cover: '',
       draft: false,
       pinned: false,
     },

@@ -234,6 +234,8 @@ function validateFrontmatter(fm: unknown): string | null {
     return 'frontmatter.tags 必须为字符串数组'
   const excerpt = (fm as PostFrontmatter).excerpt
   if (excerpt !== undefined && typeof excerpt !== 'string') return 'frontmatter.excerpt 必须为字符串'
+  const cover = (fm as PostFrontmatter).cover
+  if (cover !== undefined && typeof cover !== 'string') return 'frontmatter.cover 必须为字符串'
   return null
 }
 

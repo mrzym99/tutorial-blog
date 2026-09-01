@@ -30,6 +30,7 @@ export default createContentLoader('posts/*.md', {
         date: formatDate(d.frontmatter.date),
         tags: d.frontmatter.tags,
         excerpt: d.frontmatter.excerpt,
+        cover: d.frontmatter.cover,
         draft: d.frontmatter.draft,
         pinned: d.frontmatter.pinned,
       }))

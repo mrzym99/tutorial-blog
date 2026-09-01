@@ -20,6 +20,7 @@ interface DraftFrontmatter {
   date: string
   tags: string[]
   excerpt: string
+  cover: string
   draft: boolean
   pinned: boolean
 }
@@ -47,6 +48,45 @@ const saving = ref(false)
 const settingsOpen = ref(false)
 const settingsDraft = ref<Draft | null>(null)
 const newTag = ref('')
+
+// ---- 封面上传（复用正文图片的 /api/admin/upload） ----
+const coverUploading = ref(false)
+const coverInput = ref<HTMLInputElement | null>(null)
+
+function pickCover() {
+  coverInput.value?.click()
+}
+
+function onCoverPicked(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = '' // 允许连续选择同一文件
+  if (file) uploadCover(file)
+}
+
+async function uploadCover(file: File) {
+  if (coverUploading.value || !settingsDraft.value) return
+  coverUploading.value = true
+  try {
+    const fd = new FormData()
+    fd.append('file', file, file.name)
+    const res = await fetch('/api/admin/upload', { method: 'POST', body: fd })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      message.error((data as { error?: string }).error || '封面上传失败')
+      return
+    }
+    const data = (await res.json()) as { url: string }
+    settingsDraft.value.frontmatter.cover = data.url
+    message.success('封面已上传，记得保存设置')
+  } finally {
+    coverUploading.value = false
+  }
+}
+
+function removeCover() {
+  if (settingsDraft.value) settingsDraft.value.frontmatter.cover = ''
+}
 
 function openSettings() {
   if (!draft.value) return
@@ -183,10 +223,13 @@ async function performSave(): Promise<boolean> {
   const d = draft.value
   saving.value = true
   try {
+    // 空封面不落盘（frontmatter 里不写 cover: ''）
+    const fm = { ...d.frontmatter }
+    if (!fm.cover) delete (fm as Partial<DraftFrontmatter>).cover
     const res = await fetch(`/api/admin/posts/${encodeURIComponent(d.slug)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ frontmatter: d.frontmatter, body: d.body }),
+      body: JSON.stringify({ frontmatter: fm, body: d.body }),
     })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
@@ -342,6 +385,39 @@ const displayTitle = computed(() => {
             />
           </n-form-item>
 
+          <n-form-item label="封面（选填）">
+            <div class="cover-field">
+              <input
+                ref="coverInput"
+                type="file"
+                accept="image/*"
+                class="cover-file"
+                @change="onCoverPicked"
+              />
+              <div v-if="settingsDraft.frontmatter.cover" class="cover-preview">
+                <img :src="settingsDraft.frontmatter.cover" alt="封面预览" />
+                <div class="cover-actions">
+                  <n-button size="tiny" :loading="coverUploading" @click="pickCover">
+                    更换
+                  </n-button>
+                  <n-button size="tiny" type="error" ghost @click="removeCover">
+                    移除
+                  </n-button>
+                </div>
+              </div>
+              <button
+                v-else
+                type="button"
+                class="cover-pick"
+                :disabled="coverUploading"
+                @click="pickCover"
+              >
+                {{ coverUploading ? '上传中…' : '＋ 点击上传封面' }}
+                <span class="cover-hint">不上传时，首页卡片将显示「阅读全文」按钮</span>
+              </button>
+            </div>
+          </n-form-item>
+
           <div class="tags-block">
             <div class="tags-label">标签</div>
             <div class="chips">
@@ -473,6 +549,58 @@ const displayTitle = computed(() => {
   grid-template-columns: 1.4fr 1fr;
   gap: 0.75rem;
 }
+/* 封面上传 */
+.cover-field {
+  width: 100%;
+}
+.cover-file {
+  display: none;
+}
+.cover-pick {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.9rem 1rem;
+  border: 1px dashed var(--vp-c-divider);
+  border-radius: 8px;
+  background: var(--vp-c-bg-soft);
+  color: var(--vp-c-text-2);
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+.cover-pick:hover:not(:disabled) {
+  border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1);
+}
+.cover-pick:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+.cover-hint {
+  font-size: 0.75rem;
+  color: var(--vp-c-text-3);
+}
+.cover-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+.cover-preview img {
+  height: 96px;
+  max-width: 220px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--vp-c-divider);
+}
+.cover-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
 .tags-block {
   margin-top: 0.25rem;
 }

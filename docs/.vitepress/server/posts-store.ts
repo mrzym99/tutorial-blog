@@ -18,6 +18,7 @@ export interface PostMeta {
   date: string
   tags?: string[]
   excerpt?: string
+  cover?: string
   draft?: boolean
   pinned?: boolean
 }
@@ -78,6 +79,7 @@ export class PostsStore {
         date: frontmatter.date,
         tags: frontmatter.tags,
         excerpt: frontmatter.excerpt,
+        cover: frontmatter.cover,
         draft: frontmatter.draft,
         pinned: frontmatter.pinned,
       })
@@ -99,6 +101,7 @@ export class PostsStore {
         date: frontmatter?.date ?? '',
         tags: frontmatter?.tags,
         excerpt: frontmatter?.excerpt,
+        cover: frontmatter?.cover,
         draft: frontmatter?.draft,
         pinned: frontmatter?.pinned,
         body,

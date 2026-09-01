@@ -12,6 +12,8 @@ export interface PostFrontmatter {
   date: string
   tags?: string[]
   excerpt?: string
+  /** 封面图 URL（选填）：首页卡片右侧展示；为空时卡片显示「阅读全文」按钮 */
+  cover?: string
   /** 草稿：true 时公开侧（列表/RSS/sitemap）不展示，仅后台可编辑，取消即发布 */
   draft?: boolean
   /** 置顶：true 时公开列表中排在未置顶之前（同组内再按 date 倒序） */

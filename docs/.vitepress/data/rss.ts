@@ -37,7 +37,11 @@ export function buildRssXml(posts: PostMeta[], site: RssSite): string {
   const items = posts
     .map((p) => {
       const link = `${site.url}/posts/${p.slug}.html`
-      const desc = p.excerpt ? esc(p.excerpt) : esc(p.title)
+      // 有封面时把图片放进描述（CDATA 包裹 HTML），阅读器里可直接展示
+      const parts: string[] = []
+      if (p.cover) parts.push(`<img src="${p.cover}" alt="${esc(p.title)}" />`)
+      parts.push(p.excerpt || p.title)
+      const desc = `<![CDATA[${parts.join('\n')}]]>`
       return `    <item>
       <title>${esc(p.title)}</title>
       <link>${link}</link>

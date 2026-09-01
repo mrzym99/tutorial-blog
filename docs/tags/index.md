@@ -1,5 +1,6 @@
 ---
 layout: doc
+aside: false
 ---
 
 # 标签
