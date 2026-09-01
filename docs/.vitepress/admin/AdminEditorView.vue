@@ -1,14 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { NButton } from 'naive-ui'
+import { NButton, NModal, NSpace, NForm, NFormItem, NInput, NDatePicker, NSwitch, NTag, NDivider } from 'naive-ui'
 import { useMessage, useDialog } from 'naive-ui'
-import FrontmatterForm, { type DraftFrontmatter } from './FrontmatterForm.vue'
 import PostEditor from './PostEditor.vue'
 import { titleToSlug } from '../lib/slug'
 
 /**
- * 完整编辑器页内容（由 AdminEditorPage 提供的 NaiveProvider 包裹，
- * 因此 setup 内可调用 useMessage() / useDialog()）。
+ * 沉浸式编辑器：编辑区占满，元数据通过弹窗修改。
  * 由 AdminApp 先把当前草稿写入 sessionStorage 后跳转到本页；
  * 这里读取草稿、编辑、保存，并把最新状态回写 sessionStorage。
  */
@@ -16,6 +14,15 @@ const DRAFT_KEY = 'admin-draft'
 
 const message = useMessage()
 const dialog = useDialog()
+
+interface DraftFrontmatter {
+  title: string
+  date: string
+  tags: string[]
+  excerpt: string
+  draft: boolean
+  pinned: boolean
+}
 
 interface Draft {
   slug: string
@@ -36,12 +43,88 @@ const selectedSlug = ref('')
 const dirty = ref(false)
 const saving = ref(false)
 
-// 全站已有标签，供 FrontmatterForm 快捷点选追加
+// ---- 文章设置弹窗 ----
+const settingsOpen = ref(false)
+const settingsDraft = ref<Draft | null>(null)
+const newTag = ref('')
+
+function openSettings() {
+  if (!draft.value) return
+  // 深拷贝一份，点取消可以回滚
+  settingsDraft.value = JSON.parse(JSON.stringify(draft.value))
+  newTag.value = ''
+  settingsOpen.value = true
+}
+
+function applySettings() {
+  if (!settingsDraft.value || !draft.value) return
+  // 只更新元数据，不替换 body，避免编辑器状态（光标、undo 历史）被重置
+  draft.value.slug = settingsDraft.value.slug
+  draft.value.slugTouched = settingsDraft.value.slugTouched
+  draft.value.frontmatter = { ...settingsDraft.value.frontmatter }
+  dirty.value = true
+  persist()
+  settingsOpen.value = false
+  message.success('已更新文章设置')
+}
+
+// 标签管理（设置弹窗内）
+function addTag(t: string) {
+  if (!settingsDraft.value) return
+  const name = t.trim()
+  if (!name) return
+  const cur = settingsDraft.value.frontmatter.tags
+  if (cur.includes(name)) return
+  settingsDraft.value.frontmatter.tags = [...cur, name]
+  newTag.value = ''
+}
+function removeTag(t: string) {
+  if (!settingsDraft.value) return
+  settingsDraft.value.frontmatter.tags = settingsDraft.value.frontmatter.tags.filter(
+    (x) => x !== t,
+  )
+}
+
+// 全站已有标签，用于快捷点选追加
 const allTags = computed<string[]>(() => {
   const set = new Set<string>()
   for (const it of list.value) for (const t of it.tags ?? []) set.add(t)
   return [...set].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
 })
+
+// 推荐标签（设置弹窗里的"已有"列表 = 全站标签 - 已选）
+const suggestedTags = computed(() =>
+  allTags.value.filter((t) => !(settingsDraft.value?.frontmatter.tags ?? []).includes(t)),
+)
+
+// 日期转换
+function dateToTs(dateStr: string): number | null {
+  if (!dateStr) return null
+  const t = new Date(`${dateStr}T00:00:00`).getTime()
+  return Number.isNaN(t) ? null : t
+}
+function tsToDate(ts: number | null): string {
+  if (ts == null) return settingsDraft.value?.frontmatter.date ?? ''
+  const d = new Date(ts)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+// 标题改动时自动同步 slug（如果用户没手动改过 slug）
+function onTitleChange(v: string) {
+  if (!settingsDraft.value) return
+  settingsDraft.value.frontmatter.title = v
+  if (!settingsDraft.value.slugTouched) {
+    settingsDraft.value.slug = titleToSlug(v)
+  }
+}
+function onSlugChange(v: string) {
+  if (!settingsDraft.value) return
+  settingsDraft.value.slug = v
+  settingsDraft.value.slugTouched = v !== titleToSlug(settingsDraft.value.frontmatter.title)
+}
 
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10)
@@ -50,7 +133,7 @@ function todayStr(): string {
 onMounted(async () => {
   const raw = sessionStorage.getItem(DRAFT_KEY)
   if (!raw) {
-    location.replace('/admin') // 非从后台打开的直达页，回到后台列表
+    location.replace('/admin')
     return
   }
   try {
@@ -59,7 +142,7 @@ onMounted(async () => {
     location.replace('/admin')
     return
   }
-  selectedSlug.value = draft.value.slug // 打开时所属原文 slug，用于冲突检查排除自身
+  selectedSlug.value = draft.value.slug
   list.value = await fetchList()
   window.addEventListener('keydown', onGlobalKeydown)
 })
@@ -87,30 +170,6 @@ function persist() {
   if (draft.value) sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft.value))
 }
 
-function updateDraft(field: string, value: unknown) {
-  if (!draft.value) return
-  const d = draft.value
-  if (field === 'slug') {
-    d.slug = String(value)
-    d.slugTouched = d.slug !== titleToSlug(d.frontmatter.title)
-  } else if (field === 'title') {
-    d.frontmatter.title = String(value)
-    if (!d.slugTouched) d.slug = titleToSlug(d.frontmatter.title)
-  } else if (field === 'date') {
-    d.frontmatter.date = String(value)
-  } else if (field === 'tags') {
-    d.frontmatter.tags = Array.isArray(value) ? (value as string[]) : []
-  } else if (field === 'excerpt') {
-    d.frontmatter.excerpt = String(value)
-  } else if (field === 'draft') {
-    d.frontmatter.draft = Boolean(value)
-  } else if (field === 'pinned') {
-    d.frontmatter.pinned = Boolean(value)
-  }
-  dirty.value = true
-  persist()
-}
-
 function onBodyChange(md: string) {
   if (!draft.value) return
   draft.value.body = md
@@ -118,11 +177,7 @@ function onBodyChange(md: string) {
   persist()
 }
 
-function setNotice(m: string) {
-  message.error(m)
-}
-
-/** 执行真正的保存请求；返回是否成功（供确认对话框决定是否关闭）。 */
+/** 执行真正的保存请求；返回是否成功。 */
 async function performSave(): Promise<boolean> {
   if (!draft.value || saving.value) return false
   const d = draft.value
@@ -154,15 +209,15 @@ async function performSave(): Promise<boolean> {
 async function save() {
   if (!draft.value || saving.value) return
   const d = draft.value
-  if (!d.slug) {
-    message.warning('请填写 slug')
+
+  // 标题或 slug 为空时，先弹出设置让用户补全
+  if (!d.frontmatter.title || !d.slug) {
+    openSettings()
+    message.warning('请先填写标题和 slug')
     return
   }
-  if (!d.frontmatter.title) {
-    message.warning('请填写标题')
-    return
-  }
-  // slug 冲突确认：目标 slug 已属于另一篇文章时，PUT 会覆盖它
+
+  // slug 冲突确认
   list.value = await fetchList()
   const clash = list.value.find((it) => it.slug === d.slug && it.slug !== selectedSlug.value)
   if (clash) {
@@ -196,47 +251,157 @@ function back() {
 }
 
 function doLeave() {
-  // 若目标是 /admin 之外的页面，先清掉临时草稿避免下次误带
   sessionStorage.removeItem(DRAFT_KEY)
   if (selectedSlug.value) {
     sessionStorage.setItem('admin-selected', selectedSlug.value)
   }
-  // 当前标签直接回到后台列表
   location.href = '/admin'
 }
+
+// 当前文章标题（用于顶栏显示）
+const displayTitle = computed(() => {
+  if (!draft.value) return ''
+  return draft.value.frontmatter.title || '未命名文章'
+})
 </script>
 
 <template>
   <div class="editor-view">
     <header class="topbar">
-      <span class="brand">写作后台 · 编辑</span>
-      <span v-if="dirty" class="dirty">● 未保存</span>
-      <span class="spacer" />
-      <n-button ghost :disabled="saving" @click="save">
-        {{ saving ? '保存中…' : '保存' }}
-        <kbd>⌘S</kbd>
-      </n-button>
-      <n-button ghost @click="back">返回后台</n-button>
+      <div class="left">
+        <n-button quaternary size="small" @click="back">← 返回</n-button>
+        <span class="title">{{ displayTitle }}</span>
+        <span v-if="dirty" class="dirty">● 未保存</span>
+      </div>
+      <div class="right">
+        <n-button ghost size="small" @click="openSettings">⚙ 文章设置</n-button>
+        <n-button type="primary" size="small" :disabled="saving" @click="save">
+          {{ saving ? '保存中…' : '保存' }}
+          <kbd>⌘S</kbd>
+        </n-button>
+      </div>
     </header>
 
     <main class="content">
-      <section v-if="draft" class="form-cell">
-        <FrontmatterForm
-          :slug="draft.slug"
-          :fm="draft.frontmatter"
-          :all-tags="allTags"
-          @input="updateDraft"
-        />
-      </section>
-      <section v-if="draft" class="editor-cell">
-        <PostEditor
-          :key="draft.slug || '_new_'"
-          :model-value="draft.body"
-          @update:model-value="onBodyChange"
-          @notice="setNotice"
-        />
-      </section>
+      <PostEditor
+        v-if="draft"
+        :key="draft.slug || '_new_'"
+        :model-value="draft.body"
+        @update:model-value="onBodyChange"
+        @notice="(m: string) => message.error(m)"
+      />
     </main>
+
+    <!-- 文章设置弹窗 -->
+    <n-modal
+      v-model:show="settingsOpen"
+      :mask-closable="false"
+      preset="dialog"
+      title="文章设置"
+      positive-text="保存设置"
+      negative-text="取消"
+      @positive-click="applySettings"
+      :style="{ width: '560px' }"
+    >
+      <div v-if="settingsDraft" class="settings-form">
+        <n-form :show-label="false" label-placement="top">
+          <n-form-item label="标题">
+            <n-input
+              :value="settingsDraft.frontmatter.title"
+              placeholder="文章标题"
+              @update:value="onTitleChange"
+            />
+          </n-form-item>
+
+          <div class="two-col">
+            <n-form-item label="slug">
+              <n-input
+                :value="settingsDraft.slug"
+                placeholder="url-slug"
+                @update:value="onSlugChange"
+              />
+            </n-form-item>
+            <n-form-item label="日期">
+              <n-date-picker
+                type="date"
+                format="yyyy-MM-dd"
+                :value="dateToTs(settingsDraft.frontmatter.date)"
+                @update:value="(ts: number | null) => (settingsDraft!.frontmatter.date = tsToDate(ts))"
+                style="width: 100%"
+              />
+            </n-form-item>
+          </div>
+
+          <n-form-item label="摘要">
+            <n-input
+              :value="settingsDraft.frontmatter.excerpt"
+              type="textarea"
+              :autosize="{ minRows: 2, maxRows: 4 }"
+              placeholder="摘要（选填）"
+              @update:value="(v: string) => (settingsDraft!.frontmatter.excerpt = v)"
+            />
+          </n-form-item>
+
+          <div class="tags-block">
+            <div class="tags-label">标签</div>
+            <div class="chips">
+              <n-tag
+                v-for="t in settingsDraft.frontmatter.tags"
+                :key="t"
+                size="small"
+                closable
+                type="primary"
+                :bordered="false"
+                @close="removeTag(t)"
+              >
+                {{ t }}
+              </n-tag>
+              <n-input
+                v-model:value="newTag"
+                class="tag-input"
+                size="small"
+                placeholder="回车添加"
+                @keydown.enter.prevent="addTag(newTag)"
+              />
+            </div>
+            <div v-if="suggestedTags.length" class="quick">
+              <span class="quick-label">已有：</span>
+              <n-button
+                v-for="t in suggestedTags"
+                :key="t"
+                size="tiny"
+                quaternary
+                type="primary"
+                @click="addTag(t)"
+              >
+                + {{ t }}
+              </n-button>
+            </div>
+          </div>
+
+          <n-divider style="margin: 0.75rem 0" />
+
+          <div class="switches">
+            <label class="switch-item">
+              <n-switch
+                size="small"
+                :value="settingsDraft.frontmatter.draft"
+                @update:value="(v: boolean) => (settingsDraft!.frontmatter.draft = v)"
+              />
+              <span>草稿（保存后不公开，取消即发布）</span>
+            </label>
+            <label class="switch-item">
+              <n-switch
+                size="small"
+                :value="settingsDraft.frontmatter.pinned"
+                @update:value="(v: boolean) => (settingsDraft!.frontmatter.pinned = v)"
+              />
+              <span>置顶（列表排最前）</span>
+            </label>
+          </div>
+        </n-form>
+      </div>
+    </n-modal>
   </div>
 </template>
 
@@ -244,47 +409,109 @@ function doLeave() {
 .editor-view {
   display: flex;
   flex-direction: column;
-  height: 100vh; /* layout:false 直接占满视口，不再受博客布局宽度限制 */
+  height: 100vh;
+  background: var(--vp-c-bg);
 }
 
+/* ---- 顶栏 ---- */
 .topbar {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.55rem 1rem;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
   border-bottom: 1px solid var(--vp-c-divider);
+  background: var(--vp-c-bg);
+  height: 48px;
 }
-.brand {
-  font-weight: 700;
-  font-size: 0.98rem;
-  letter-spacing: 0.02em;
+.left,
+.right {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--vp-c-text-1);
+  max-width: 360px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .dirty {
   font-size: 0.78rem;
   color: var(--vp-c-warning-1);
 }
-.spacer {
-  flex: 1;
-}
 .topbar kbd {
   font-family: inherit;
-  font-size: 0.72rem;
-  opacity: 0.75;
-  margin-left: 0.15rem;
+  font-size: 0.7rem;
+  opacity: 0.7;
+  margin-left: 0.2rem;
 }
 
+/* ---- 编辑区 ---- */
 .content {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
+  padding: 1.5rem 2rem;
+  background: var(--vp-c-bg);
 }
-.form-cell {
-  flex: none;
+.content > :deep(.editor-wrap) {
+  height: 100%;
+  max-width: 820px;
+  margin: 0 auto;
 }
-.editor-cell {
+
+/* ---- 设置弹窗 ---- */
+.settings-form {
+  padding: 0.25rem 0;
+}
+.two-col {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 0.75rem;
+}
+.tags-block {
+  margin-top: 0.25rem;
+}
+.tags-label {
+  font-size: 0.82rem;
+  color: var(--vp-c-text-3);
+  margin-bottom: 0.35rem;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.tag-input {
   flex: 1;
-  min-height: 0;
-  border-top: 1px solid var(--vp-c-divider);
+  min-width: 8rem;
+}
+.quick {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+}
+.quick-label {
+  font-size: 0.75rem;
+  color: var(--vp-c-text-3);
+}
+.switches {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+.switch-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--vp-c-text-2);
 }
 </style>

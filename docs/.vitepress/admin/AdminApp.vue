@@ -60,19 +60,25 @@ function openEditor(draft: Draft) {
 }
 
 async function selectPost(slug: string) {
-  const rec = await api<{ frontmatter?: Partial<Draft['frontmatter']>; body?: string }>(
-    `/api/admin/posts/${encodeURIComponent(slug)}`,
-  )
+  const rec = await api<{
+    title?: string
+    date?: string
+    tags?: string[]
+    excerpt?: string
+    draft?: boolean
+    pinned?: boolean
+    body?: string
+  }>(`/api/admin/posts/${encodeURIComponent(slug)}`)
   const draft: Draft = {
     slug,
     slugTouched: true,
     frontmatter: {
-      title: rec.frontmatter?.title ?? '',
-      date: rec.frontmatter?.date ?? todayStr(),
-      tags: rec.frontmatter?.tags ?? [],
-      excerpt: rec.frontmatter?.excerpt ?? '',
-      draft: rec.frontmatter?.draft ?? false,
-      pinned: rec.frontmatter?.pinned ?? false,
+      title: rec.title ?? '',
+      date: rec.date ?? todayStr(),
+      tags: rec.tags ?? [],
+      excerpt: rec.excerpt ?? '',
+      draft: rec.draft ?? false,
+      pinned: rec.pinned ?? false,
     },
     body: rec.body ?? '',
   }
@@ -165,22 +171,28 @@ async function api<T>(path: string): Promise<T> {
 <template>
   <div class="admin">
     <header class="topbar">
-      <span class="brand">写作后台</span>
+      <div class="brand">写作后台</div>
+      <div class="actions">
+        <n-button type="primary" @click="newPost">＋ 新建文章</n-button>
+      </div>
+    </header>
 
+    <nav class="tabbar">
       <n-tabs
         class="tabs"
-        type="segment"
+        type="line"
+        size="medium"
         :value="view"
         @update:value="(v) => (view = v as View)"
       >
-        <n-tab-pane name="posts" :tab="`文章（${list.length}）`" />
-        <n-tab-pane name="trash" :tab="`回收站${trash.length ? '（' + trash.length + '）' : ''}`" />
+        <n-tab-pane name="posts">
+          <template #tab>文章（{{ list.length }}）</template>
+        </n-tab-pane>
+        <n-tab-pane name="trash">
+          <template #tab>回收站{{ trash.length ? '（' + trash.length + '）' : '' }}</template>
+        </n-tab-pane>
       </n-tabs>
-
-      <span class="spacer" />
-
-      <n-button type="primary" @click="newPost">＋ 新建文章</n-button>
-    </header>
+    </nav>
 
     <main class="content">
       <PostList v-if="view === 'posts'" :items="list" @edit="selectPost" @remove="removePost" />
@@ -206,26 +218,38 @@ async function api<T>(path: string): Promise<T> {
   background: var(--vp-c-bg);
 }
 
-/* ---- 顶部栏 ---- */
+/* ---- 顶部标题栏 ---- */
 .topbar {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.55rem 1rem;
+  justify-content: space-between;
+  padding: 0.85rem 1.25rem;
   border-bottom: 1px solid var(--vp-c-divider);
   background: var(--vp-c-bg);
 }
 .brand {
   font-weight: 700;
-  font-size: 0.98rem;
+  font-size: 1.05rem;
   letter-spacing: 0.02em;
-  margin-right: 0.25rem;
+  color: var(--vp-c-text-1);
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ---- Tab 导航栏 ---- */
+.tabbar {
+  padding: 0 1.25rem;
+  border-bottom: 1px solid var(--vp-c-divider);
+  background: var(--vp-c-bg);
 }
 .tabs {
-  margin-right: 0.25rem;
+  width: 100%;
 }
-.spacer {
-  flex: 1;
+.tabs :deep(.n-tabs-nav) {
+  border-bottom: none;
 }
 
 /* ---- 正文区 ---- */
@@ -233,6 +257,6 @@ async function api<T>(path: string): Promise<T> {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  background: var(--vp-c-bg-soft);
+  background: var(--vp-c-bg);
 }
 </style>

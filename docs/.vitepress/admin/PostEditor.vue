@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import { useEditor, EditorContent } from "@tiptap/vue-3";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
@@ -13,6 +13,8 @@ const emit = defineEmits<{
 
 const uploading = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
+// 防止 onUpdate 触发的 prop 变化又回写编辑器造成抖动
+const isUpdating = ref(false);
 
 function pickImage() {
   fileInput.value?.click();
@@ -54,9 +56,27 @@ const editor = useEditor({
     },
   },
   onUpdate: ({ editor }) => {
+    isUpdating.value = true;
     emit("update:modelValue", editor.getMarkdown());
+    // 下一帧重置标志，避免 watch 立即回写
+    Promise.resolve().then(() => {
+      isUpdating.value = false;
+    });
   },
 });
+
+// 外部 modelValue 变化时回填编辑器（如切换文章、从 sessionStorage 恢复等）
+watch(
+  () => props.modelValue,
+  (val) => {
+    if (!editor.value || isUpdating.value) return;
+    const currentMd = editor.value.getMarkdown();
+    if (currentMd !== val) {
+      editor.value.commands.setContent(val, { emitUpdate: false, contentType: "markdown" });
+    }
+  },
+);
+
 
 function firstImageFile(data: { files: FileList | null } | null | undefined): File | null {
   if (!data?.files) return null;

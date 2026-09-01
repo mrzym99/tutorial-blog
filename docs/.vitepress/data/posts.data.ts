@@ -27,7 +27,7 @@ export default createContentLoader('posts/*.md', {
       .map((d) => ({
         slug: slugFromUrl(d.url),
         title: d.frontmatter.title,
-        date: d.frontmatter.date,
+        date: formatDate(d.frontmatter.date),
         tags: d.frontmatter.tags,
         excerpt: d.frontmatter.excerpt,
         draft: d.frontmatter.draft,
@@ -43,4 +43,20 @@ export default createContentLoader('posts/*.md', {
 function slugFromUrl(url: string): string {
   const m = /\/([^/]+?)(?:\.html)?\/?$/.exec(url)
   return m?.[1] ?? ''
+}
+
+/** VitePress 解析 frontmatter 的 date 可能是 Date 对象，统一格式化为 YYYY-MM-DD。 */
+function formatDate(d: unknown): string {
+  if (d instanceof Date) {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  }
+  if (typeof d === 'string') {
+    // 处理 "2026-08-27T00:00:00.000Z" 之类的字符串
+    const m = /^(\d{4}-\d{2}-\d{2})/.exec(d)
+    if (m) return m[1]
+  }
+  return String(d ?? '')
 }
