@@ -46,15 +46,12 @@ function postHref(slug: string): string {
     <section v-for="[ym, posts] in groups" :key="ym" class="archive-group">
       <h2>{{ monthLabel(ym) }}</h2>
       <div class="card-list">
-        <Card
-          v-for="p in posts"
-          :key="p.slug"
-          :title="p.title"
-          :href="postHref(p.slug)"
-          :date="p.date"
-          :cover="p.cover"
-          size="compact"
-        />
+        <Card v-for="p in posts" :key="p.slug">
+          <div class="archive-row">
+            <a class="row-title" :href="postHref(p.slug)">{{ p.title }}</a>
+            <time class="row-date">{{ p.date }}</time>
+          </div>
+        </Card>
       </div>
     </section>
 
@@ -66,7 +63,36 @@ function postHref(slug: string): string {
 <style scoped>
 .card-list {
   display: grid;
-  gap: 1rem;
+  gap: 0.75rem;
   margin: 1rem 0;
+}
+
+/* 归档行：标题在左（超长省略），时间在右 */
+.archive-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem 1.25rem;
+}
+.row-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--vp-c-text-1);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 0.2s;
+}
+.row-title:hover {
+  color: var(--vp-c-brand-1);
+}
+.row-date {
+  flex: none;
+  font-size: 0.85rem;
+  color: var(--vp-c-text-3);
+  font-variant-numeric: tabular-nums;
 }
 </style>

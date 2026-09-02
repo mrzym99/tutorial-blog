@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { withBase, useData } from 'vitepress'
 import { data as postsData } from '../../data/posts.data'
 import { postsByTag } from '../../lib/tags'
-import Card from './Card.vue'
+import PostCard from './PostCard.vue'
 import Pagination from './Pagination.vue'
 
 const { params } = useData()
@@ -33,7 +33,7 @@ function postHref(slug: string): string {
 <template>
   <h1>标签：{{ tag }}</h1>
   <div class="card-list">
-    <Card
+    <PostCard
       v-for="p in paged"
       :key="p.slug"
       :title="p.title"

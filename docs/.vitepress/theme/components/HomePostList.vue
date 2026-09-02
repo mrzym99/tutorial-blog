@@ -2,7 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { data as postsData } from "../../data/posts.data";
 import { withBase } from "vitepress";
-import Card from "./Card.vue";
+import PostCard from "./PostCard.vue";
 import Pagination from "./Pagination.vue";
 
 const posts = postsData.posts;
@@ -32,7 +32,7 @@ watch(totalPages, (t) => {
     </header>
 
     <div class="post-list">
-      <Card
+      <PostCard
         v-for="p in paged"
         :key="p.slug"
         :title="p.title"
