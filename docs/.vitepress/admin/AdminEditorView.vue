@@ -501,7 +501,8 @@ const displayTitle = computed(() => {
 }
 .content > :deep(.editor-wrap) {
   height: 100%;
-  max-width: 820px;
+  /* 双列（编辑+预览）需要更宽的版心，超宽屏也不至于一行太长 */
+  max-width: 1500px;
   margin: 0 auto;
 }
 

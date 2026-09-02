@@ -15,12 +15,9 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@tiptap/extension-image": "^3.0.0",
-    "@tiptap/markdown": "^3.0.0",
-    "@tiptap/starter-kit": "^3.0.0",
-    "@tiptap/vue-3": "^3.0.0",
     "cos-nodejs-sdk-v5": "^3.0.0",
     "js-yaml": "^5.4.1",
+    "md-editor-v3": "^6.5.6",
     "naive-ui": "^2.45.3",
     "vitepress": "^1.6.0",
     "vue": "^3.5.0"
