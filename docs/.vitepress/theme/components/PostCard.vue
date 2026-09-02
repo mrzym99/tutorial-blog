@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { withBase } from 'vitepress'
+import Card from './Card.vue'
 
 /**
- * 文章富卡片内容：标题、元信息、摘要、标签、封面/「阅读全文」。
- * 卡片外观由外层的 Card 壳提供，本组件只负责内容排版。
+ * 文章富卡片：Card 壳 + 标题、元信息、摘要、标签、封面/「阅读全文」。
  * 通过 props 传入数据，在首页与标签文章列表间复用。
  */
 const props = withDefaults(
@@ -36,7 +36,8 @@ function tagHref(tag: string): string {
 </script>
 
 <template>
-  <div class="post-card" :class="{ 'post-card--compact': props.size === 'compact' }">
+  <Card>
+    <div class="post-card" :class="{ 'post-card--compact': props.size === 'compact' }">
     <div class="card-body">
       <a class="card-title" :href="props.href">
         <span class="title-text">{{ props.title }}</span>
@@ -99,7 +100,8 @@ function tagHref(tag: string): string {
         </svg>
       </span>
     </a>
-  </div>
+    </div>
+  </Card>
 </template>
 
 <style scoped>
