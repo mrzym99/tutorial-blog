@@ -139,6 +139,73 @@ async function restorePost(slug: string) {
   }
 }
 
+async function removeManyPosts(slugs: string[]) {
+  dialog.warning({
+    title: '批量移入回收站',
+    content: `删除选中的 ${slugs.length} 篇文章？删除后会移入回收站，可随时恢复。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    async onPositiveClick() {
+      const results = await Promise.all(
+        slugs.map((s) =>
+          fetch(`/api/admin/posts/${encodeURIComponent(s)}`, { method: 'DELETE' }),
+        ),
+      )
+      const failed = results.filter((r) => !r.ok).length
+      await loadList()
+      await loadTrash()
+      if (failed) message.error(`${failed} 篇删除失败`)
+      else message.success(`已删除 ${slugs.length} 篇`)
+      return true
+    },
+  })
+}
+
+async function restoreManyPosts(slugs: string[]) {
+  // 顺序恢复，避免并发写同一目录时产生竞争
+  let failed = 0
+  let firstError = ''
+  for (const s of slugs) {
+    const res = await fetch(`/api/admin/trash/${encodeURIComponent(s)}/restore`, {
+      method: 'POST',
+    })
+    if (!res.ok) {
+      failed++
+      if (!firstError) {
+        const data = await res.json().catch(() => ({}))
+        firstError = (data as { error?: string }).error || `恢复「${s}」失败`
+      }
+    }
+  }
+  await loadList()
+  await loadTrash()
+  if (failed) message.error(`${failed} 篇恢复失败：${firstError}`)
+  else message.success(`已恢复 ${slugs.length} 篇`)
+}
+
+async function purgeAllPosts() {
+  const slugs = trash.value.map((t) => t.slug)
+  if (!slugs.length) return
+  dialog.warning({
+    title: '清空回收站',
+    content: `彻底清空回收站的 ${slugs.length} 篇文章？该操作不可恢复。`,
+    positiveText: '彻底删除',
+    negativeText: '取消',
+    async onPositiveClick() {
+      // 顺序删除，避免并发操作回收站目录时产生竞争
+      let failed = 0
+      for (const s of slugs) {
+        const res = await fetch(`/api/admin/trash/${encodeURIComponent(s)}`, { method: 'DELETE' })
+        if (!res.ok) failed++
+      }
+      await loadTrash()
+      if (failed) message.error(`${failed} 篇删除失败`)
+      else message.success(`回收站已清空（${slugs.length} 篇）`)
+      return true
+    },
+  })
+}
+
 function purgePost(slug: string) {
   dialog.warning({
     title: '彻底删除',
@@ -197,12 +264,20 @@ async function api<T>(path: string): Promise<T> {
     </nav>
 
     <main class="content">
-      <PostList v-if="view === 'posts'" :items="list" @edit="selectPost" @remove="removePost" />
+      <PostList
+        v-if="view === 'posts'"
+        :items="list"
+        @edit="selectPost"
+        @remove="removePost"
+        @remove-many="removeManyPosts"
+      />
       <TrashList
         v-else
         :trash="trash"
         @restore="restorePost"
         @purge="purgePost"
+        @restore-many="restoreManyPosts"
+        @purge-all="purgeAllPosts"
       />
     </main>
   </div>
