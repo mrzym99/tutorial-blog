@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
 import { data as postsData } from "../../data/posts.data";
 import { withBase } from "vitepress";
 import PostCard from "./PostCard.vue";
 import Pagination from "./Pagination.vue";
+import { usePagedList } from "../composables/usePagedList";
 
 const posts = postsData.posts;
 
@@ -11,17 +11,8 @@ function postHref(slug: string): string {
   return withBase(`/posts/${slug}.html`);
 }
 
-// 前端分页：数据已在客户端，直接切片即可
 const PAGE_SIZE = 10;
-const page = ref(1);
-const totalPages = computed(() => Math.max(1, Math.ceil(posts.length / PAGE_SIZE)));
-const paged = computed(() =>
-  posts.slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE),
-);
-// 数据变化时收敛到合法页码
-watch(totalPages, (t) => {
-  if (page.value > t) page.value = t;
-});
+const { page, total, paged } = usePagedList(posts, PAGE_SIZE);
 </script>
 
 <template>
@@ -42,10 +33,10 @@ watch(totalPages, (t) => {
         :excerpt="p.excerpt"
         :cover="p.cover"
       />
-      <p v-if="!posts.length" class="empty">还没有文章。</p>
+      <p v-if="!total" class="empty">还没有文章。</p>
     </div>
 
-    <Pagination v-model:page="page" :page-size="PAGE_SIZE" :total="posts.length" />
+    <Pagination v-model:page="page" :page-size="PAGE_SIZE" :total="total" />
   </div>
 </template>
 

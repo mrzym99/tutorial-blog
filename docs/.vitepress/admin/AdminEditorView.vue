@@ -3,32 +3,15 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { NButton, NModal, NSpace, NForm, NFormItem, NInput, NDatePicker, NSwitch, NTag, NDivider } from 'naive-ui'
 import { useMessage, useDialog } from 'naive-ui'
 import PostEditor from './PostEditor.vue'
+import { DRAFT_KEY, todayStr, type Draft, type DraftFrontmatter } from './draft'
 
 /**
  * 沉浸式编辑器：编辑区占满，元数据通过弹窗修改。
  * 由 AdminApp 先把当前草稿写入 sessionStorage 后跳转到本页；
  * 这里读取草稿、编辑、保存，并把最新状态回写 sessionStorage。
  */
-const DRAFT_KEY = 'admin-draft'
-
 const message = useMessage()
 const dialog = useDialog()
-
-interface DraftFrontmatter {
-  title: string
-  date: string
-  tags: string[]
-  excerpt: string
-  cover: string
-  draft: boolean
-  pinned: boolean
-}
-
-interface Draft {
-  slug: string
-  frontmatter: DraftFrontmatter
-  body: string
-}
 
 interface ListItem {
   slug: string
@@ -152,10 +135,6 @@ function tsToDate(ts: number | null): string {
 function onTitleChange(v: string) {
   if (!settingsDraft.value) return
   settingsDraft.value.frontmatter.title = v
-}
-
-function todayStr(): string {
-  return new Date().toISOString().slice(0, 10)
 }
 
 onMounted(async () => {

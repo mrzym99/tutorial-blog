@@ -1,24 +1,17 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { withBase } from 'vitepress'
 import { data as postsData } from '../../data/posts.data'
 import type { PostMeta } from '../../lib/tags'
 import Card from './Card.vue'
 import Pagination from './Pagination.vue'
+import { usePagedList } from '../composables/usePagedList'
 
 const posts = postsData.posts
 
 // 前端分页：先按篇数切片，再对当前页切片按月分组（与首页一致，每页 10 篇）
 const PAGE_SIZE = 10
-const page = ref(1)
-const totalPages = computed(() => Math.max(1, Math.ceil(posts.length / PAGE_SIZE)))
-const paged = computed(() =>
-  posts.slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE),
-)
-// 数据变化时收敛到合法页码
-watch(totalPages, (t) => {
-  if (page.value > t) page.value = t
-})
+const { page, total, paged } = usePagedList(posts, PAGE_SIZE)
 
 // 按月分组：{ YYYY-MM -> PostMeta[] }，月份倒序
 const groups = computed<Array<[string, PostMeta[]]>>(() => {
@@ -42,7 +35,7 @@ function postHref(slug: string): string {
 </script>
 
 <template>
-  <div v-if="posts.length" class="archive">
+  <div v-if="total" class="archive">
     <section v-for="[ym, posts] in groups" :key="ym" class="archive-group">
       <h2>{{ monthLabel(ym) }}</h2>
       <div class="card-list">
@@ -55,7 +48,7 @@ function postHref(slug: string): string {
       </div>
     </section>
 
-    <Pagination v-model:page="page" :page-size="PAGE_SIZE" :total="posts.length" />
+    <Pagination v-model:page="page" :page-size="PAGE_SIZE" :total="total" />
   </div>
   <p v-else>还没有文章。</p>
 </template>

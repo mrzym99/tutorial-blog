@@ -5,32 +5,16 @@ import { useMessage, useDialog } from 'naive-ui'
 import PostList, { type ListItem } from './PostList.vue'
 import TrashList, { type TrashItem } from './TrashList.vue'
 import { newSlug } from '../lib/slug'
+import { DRAFT_KEY, todayStr, type Draft } from './draft'
 
 type View = 'posts' | 'trash'
 
 const message = useMessage()
 const dialog = useDialog()
 
-interface Draft {
-  slug: string
-  frontmatter: {
-    title: string
-    date: string
-    tags: string[]
-    excerpt: string
-    cover: string
-    draft: boolean
-    pinned: boolean
-  }
-  body: string
-}
-
 const list = ref<ListItem[]>([])
 const trash = ref<TrashItem[]>([])
 const view = ref<View>('posts')
-
-// 编辑器页的草稿中转 key
-const DRAFT_KEY = 'admin-draft'
 
 async function loadList() {
   list.value = await api<ListItem[]>('/api/admin/posts')
@@ -49,10 +33,6 @@ onMounted(() => {
   window.addEventListener('focus', loadList)
 })
 onBeforeUnmount(() => window.removeEventListener('focus', loadList))
-
-function todayStr(): string {
-  return new Date().toISOString().slice(0, 10)
-}
 
 /** 把草稿写入 sessionStorage 并在当前标签跳转到全屏编辑器页。 */
 function openEditor(draft: Draft) {

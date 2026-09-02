@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { withBase, useData } from 'vitepress'
 import { data as postsData } from '../../data/posts.data'
 import { postsByTag } from '../../lib/tags'
 import PostCard from './PostCard.vue'
 import Pagination from './Pagination.vue'
+import { usePagedList } from '../composables/usePagedList'
 
 const { params } = useData()
 
@@ -17,13 +18,9 @@ const tag = computed(() => {
 
 const listed = computed(() => postsByTag(postsData.posts, tag.value))
 
-// 前端分页：切标签时回到第一页
+// 前端分页：数据源（标签结果）变化时 usePagedList 自动回到第一页
 const PAGE_SIZE = 10
-const page = ref(1)
-watch(tag, () => (page.value = 1))
-const paged = computed(() =>
-  listed.value.slice((page.value - 1) * PAGE_SIZE, page.value * PAGE_SIZE),
-)
+const { page, total, paged } = usePagedList(listed, PAGE_SIZE)
 
 function postHref(slug: string): string {
   return withBase(`/posts/${slug}.html`)
@@ -43,8 +40,8 @@ function postHref(slug: string): string {
       size="compact"
     />
   </div>
-  <p v-if="!listed.length">该标签下暂无文章。</p>
-  <Pagination v-model:page="page" :page-size="PAGE_SIZE" :total="listed.length" />
+  <p v-if="!total">该标签下暂无文章。</p>
+  <Pagination v-model:page="page" :page-size="PAGE_SIZE" :total="total" />
 </template>
 
 <style scoped>
