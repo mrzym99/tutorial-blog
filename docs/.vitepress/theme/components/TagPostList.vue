@@ -30,8 +30,8 @@ function postHref(slug: string): string {
       :title="p.title"
       :href="postHref(p.slug)"
       :date="p.date"
-      :excerpt="p.excerpt"
       :cover="p.cover"
+      size="compact"
     />
   </div>
   <p v-if="!listed.length">该标签下暂无文章。</p>

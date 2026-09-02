@@ -110,10 +110,20 @@ function tagHref(tag: string): string {
   background: var(--card-bg);
   border-radius: 12px;
   box-shadow: var(--vp-shadow-2);
-  transition: box-shadow 0.25s ease;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
 }
 .post-card:hover {
   box-shadow: var(--vp-shadow-3);
+}
+
+/* 暗色模式：黑色阴影在深色背景上不可见，改用描边 + 深投影区分层次 */
+.dark .post-card {
+  border: 1px solid var(--vp-c-divider);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.dark .post-card:hover {
+  border-color: var(--vp-c-brand-1);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
 }
 
 /* compact 档：缩略图更小，适合归档等轻量列表 */

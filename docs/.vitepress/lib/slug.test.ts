@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isValidSlug, validateSlug, titleToSlug } from './slug'
+import { isValidSlug, validateSlug, newSlug } from './slug'
 
 describe('isValidSlug / validateSlug', () => {
   it('接受合法 slug：英文小写、中文、数字、连字符、下划线', () => {
@@ -33,28 +33,17 @@ describe('isValidSlug / validateSlug', () => {
   })
 })
 
-describe('titleToSlug', () => {
-  it('英文转小写并将空白转连字符', () => {
-    expect(titleToSlug('Hello World')).toBe('hello-world')
+describe('newSlug', () => {
+  it('生成 UUID v4 且总是合法 slug', () => {
+    for (let i = 0; i < 20; i++) {
+      const s = newSlug()
+      expect(s).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+      expect(isValidSlug(s)).toBe(true)
+    }
   })
 
-  it('保留中文，剔除其它非法字符', () => {
-    expect(titleToSlug('前端 教程')).toBe('前端-教程')
-    expect(titleToSlug('Hello, World!?')).toBe('hello-world')
-  })
-
-  it('合并连续连字符、去除首尾连字符', () => {
-    expect(titleToSlug('  A  B  C  ')).toBe('a-b-c')
-    expect(titleToSlug('---leading---')).toBe('leading')
-  })
-
-  it('空结果回退为 untitled', () => {
-    expect(titleToSlug('   ')).toBe('untitled')
-    expect(titleToSlug('!!!')).toBe('untitled')
-  })
-
-  it('生成的 slug 总是合法', () => {
-    for (const t of ['Hello World', 'Vue.js 3 教程', '   ', 'A/B/C 测试'])
-      expect(isValidSlug(titleToSlug(t))).toBe(true)
+  it('不重复', () => {
+    const seen = new Set(Array.from({ length: 100 }, () => newSlug()))
+    expect(seen.size).toBe(100)
   })
 })

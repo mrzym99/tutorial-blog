@@ -3,7 +3,6 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { NButton, NModal, NSpace, NForm, NFormItem, NInput, NDatePicker, NSwitch, NTag, NDivider } from 'naive-ui'
 import { useMessage, useDialog } from 'naive-ui'
 import PostEditor from './PostEditor.vue'
-import { titleToSlug } from '../lib/slug'
 
 /**
  * 沉浸式编辑器：编辑区占满，元数据通过弹窗修改。
@@ -27,7 +26,6 @@ interface DraftFrontmatter {
 
 interface Draft {
   slug: string
-  slugTouched: boolean
   frontmatter: DraftFrontmatter
   body: string
 }
@@ -99,8 +97,6 @@ function openSettings() {
 function applySettings() {
   if (!settingsDraft.value || !draft.value) return
   // 只更新元数据，不替换 body，避免编辑器状态（光标、undo 历史）被重置
-  draft.value.slug = settingsDraft.value.slug
-  draft.value.slugTouched = settingsDraft.value.slugTouched
   draft.value.frontmatter = { ...settingsDraft.value.frontmatter }
   dirty.value = true
   persist()
@@ -152,18 +148,10 @@ function tsToDate(ts: number | null): string {
   return `${y}-${m}-${day}`
 }
 
-// 标题改动时自动同步 slug（如果用户没手动改过 slug）
+// 标题改动（slug 由系统生成，与标题无关）
 function onTitleChange(v: string) {
   if (!settingsDraft.value) return
   settingsDraft.value.frontmatter.title = v
-  if (!settingsDraft.value.slugTouched) {
-    settingsDraft.value.slug = titleToSlug(v)
-  }
-}
-function onSlugChange(v: string) {
-  if (!settingsDraft.value) return
-  settingsDraft.value.slug = v
-  settingsDraft.value.slugTouched = v !== titleToSlug(settingsDraft.value.frontmatter.title)
 }
 
 function todayStr(): string {
@@ -237,7 +225,6 @@ async function performSave(): Promise<boolean> {
       return false
     }
     const saved = (await res.json()) as { slug: string }
-    if (!d.slugTouched && d.slug !== saved.slug) d.slug = saved.slug
     selectedSlug.value = saved.slug
     dirty.value = false
     list.value = await fetchList()
@@ -253,26 +240,13 @@ async function save() {
   if (!draft.value || saving.value) return
   const d = draft.value
 
-  // 标题或 slug 为空时，先弹出设置让用户补全
-  if (!d.frontmatter.title || !d.slug) {
+  // 标题为空时，先弹出设置让用户补全（slug 由系统生成，无需检查）
+  if (!d.frontmatter.title) {
     openSettings()
-    message.warning('请先填写标题和 slug')
+    message.warning('请先填写标题')
     return
   }
 
-  // slug 冲突确认
-  list.value = await fetchList()
-  const clash = list.value.find((it) => it.slug === d.slug && it.slug !== selectedSlug.value)
-  if (clash) {
-    dialog.warning({
-      title: 'slug 已存在',
-      content: `slug「${d.slug}」已存在（${clash.title}），保存将覆盖该文章。确定继续吗？`,
-      positiveText: '覆盖保存',
-      negativeText: '取消',
-      onPositiveClick: performSave,
-    })
-    return
-  }
   await performSave()
 }
 
@@ -356,24 +330,15 @@ const displayTitle = computed(() => {
             />
           </n-form-item>
 
-          <div class="two-col">
-            <n-form-item label="slug">
-              <n-input
-                :value="settingsDraft.slug"
-                placeholder="url-slug"
-                @update:value="onSlugChange"
-              />
-            </n-form-item>
-            <n-form-item label="日期">
-              <n-date-picker
-                type="date"
-                format="yyyy-MM-dd"
-                :value="dateToTs(settingsDraft.frontmatter.date)"
-                @update:value="(ts: number | null) => (settingsDraft!.frontmatter.date = tsToDate(ts))"
-                style="width: 100%"
-              />
-            </n-form-item>
-          </div>
+          <n-form-item label="日期">
+            <n-date-picker
+              type="date"
+              format="yyyy-MM-dd"
+              :value="dateToTs(settingsDraft.frontmatter.date)"
+              @update:value="(ts: number | null) => (settingsDraft!.frontmatter.date = tsToDate(ts))"
+              style="width: 100%"
+            />
+          </n-form-item>
 
           <n-form-item label="摘要">
             <n-input
@@ -543,11 +508,6 @@ const displayTitle = computed(() => {
 /* ---- 设置弹窗 ---- */
 .settings-form {
   padding: 0.25rem 0;
-}
-.two-col {
-  display: grid;
-  grid-template-columns: 1.4fr 1fr;
-  gap: 0.75rem;
 }
 /* 封面上传 */
 .cover-field {

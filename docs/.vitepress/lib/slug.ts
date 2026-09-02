@@ -32,16 +32,9 @@ export function validateSlug(slug: unknown): SlugResult {
 }
 
 /**
- * 标题 → slug（表单自动生成用，用户可手改）：
- * 英文转小写、任意空白转 `-`、非法字符剔除（中文保留）、连续 `-` 合并、去除首尾 `-`。
+ * 新文章 slug：由系统生成 UUID v4，用户不参与定义。
+ * UUID 仅含小写十六进制与 `-`，天然满足 SLUG_PATTERN（合法且防路径穿越）。
  */
-export function titleToSlug(title: string): string {
-  const slug = title
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9一-龥_-]/g, '')
-    .replace(/-{2,}/g, '-')
-    .replace(/^-+|-+$/g, '')
-  return slug || 'untitled'
+export function newSlug(): string {
+  return crypto.randomUUID()
 }

@@ -274,6 +274,10 @@ const postCount = posts.length
   border-color: var(--vp-c-brand-1);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
 }
+/* 暗色模式：加深 hover 投影，让卡片浮起效果可见 */
+.dark .post-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
 .card-top {
   display: flex;
   align-items: baseline;

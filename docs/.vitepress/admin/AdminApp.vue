@@ -4,6 +4,7 @@ import { NButton, NTabs, NTabPane } from 'naive-ui'
 import { useMessage, useDialog } from 'naive-ui'
 import PostList, { type ListItem } from './PostList.vue'
 import TrashList, { type TrashItem } from './TrashList.vue'
+import { newSlug } from '../lib/slug'
 
 type View = 'posts' | 'trash'
 
@@ -12,7 +13,6 @@ const dialog = useDialog()
 
 interface Draft {
   slug: string
-  slugTouched: boolean
   frontmatter: {
     title: string
     date: string
@@ -72,8 +72,7 @@ async function selectPost(slug: string) {
     body?: string
   }>(`/api/admin/posts/${encodeURIComponent(slug)}`)
   const draft: Draft = {
-    slug,
-    slugTouched: true,
+    slug, // 已有文章保持原 slug，URL 不变
     frontmatter: {
       title: rec.title ?? '',
       date: rec.date ?? todayStr(),
@@ -90,8 +89,7 @@ async function selectPost(slug: string) {
 
 function newPost() {
   const draft: Draft = {
-    slug: '',
-    slugTouched: false,
+    slug: newSlug(), // 系统生成 UUID，用户不参与定义
     frontmatter: {
       title: '',
       date: todayStr(),
