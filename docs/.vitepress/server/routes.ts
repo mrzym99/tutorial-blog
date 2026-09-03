@@ -11,10 +11,11 @@ import {
   ConflictError,
   type PostMeta,
 } from './posts-store'
+import type { CollectionsStore } from './collections-store'
 import type { UploadFile, UploadResult } from './upload-cos'
 import { CosError } from './upload-cos'
 import { validateSlug } from '../lib/slug'
-import { isValidDate, type PostFrontmatter } from '../lib/frontmatter'
+import { isValidDate, type PostFrontmatter, type CollectionFrontmatter } from '../lib/frontmatter'
 
 export type Uploader = (file: UploadFile) => Promise<UploadResult>
 
@@ -29,6 +30,11 @@ export type AdminRoute =
   | { type: 'trash-list' }
   | { type: 'trash-restore'; slug: string }
   | { type: 'trash-remove'; slug: string }
+  | { type: 'collection-list' }
+  | { type: 'collection-create' }
+  | { type: 'collection-get'; slug: string }
+  | { type: 'collection-save'; slug: string }
+  | { type: 'collection-remove'; slug: string }
   | { type: 'notfound' }
 
 /** 纯函数：把 URL 路径 + HTTP 方法解析为路由，方便单测。 */
@@ -55,11 +61,23 @@ export function parseAdminRoute(urlPath: string, method = 'GET'): AdminRoute {
     if (up === 'DELETE') return { type: 'trash-remove', slug: parts[1] }
     return { type: 'trash-restore', slug: parts[1] }
   }
+  // 合集路由：/collections（GET 列表 / POST 新建）、/collections/:slug（GET/PUT/DELETE）
+  if (parts.length === 1 && parts[0] === 'collections') {
+    if (up === 'POST') return { type: 'collection-create' }
+    return { type: 'collection-list' }
+  }
+  if (parts.length === 2 && parts[0] === 'collections') {
+    const slug = parts[1]
+    if (up === 'PUT') return { type: 'collection-save', slug }
+    if (up === 'DELETE') return { type: 'collection-remove', slug }
+    return { type: 'collection-get', slug }
+  }
   return { type: 'notfound' }
 }
 
 export interface AdminContext {
   store: PostsStore
+  collections: CollectionsStore
   /** COS 上传器；未配置为 null（此时上传接口返回 503） */
   uploader?: Uploader | null
 }
@@ -96,6 +114,19 @@ export async function handleAdminRequest(
       case 'trash-remove':
         if (method !== 'DELETE') return methodNotAllowed(res)
         return await handleTrashRemove(res, route.slug, ctx)
+      case 'collection-list':
+        return await handleCollectionList(res, ctx)
+      case 'collection-create':
+        if (method !== 'POST') return methodNotAllowed(res)
+        return await handleCollectionCreate(res, req, ctx)
+      case 'collection-get':
+        return await handleCollectionGet(res, route.slug, ctx)
+      case 'collection-save':
+        if (method !== 'PUT') return methodNotAllowed(res)
+        return await handleCollectionSave(res, route.slug, req, ctx)
+      case 'collection-remove':
+        if (method !== 'DELETE') return methodNotAllowed(res)
+        return await handleCollectionRemove(res, route.slug, ctx)
       default:
         return notFound(res)
     }
@@ -146,11 +177,40 @@ async function handleSave(
 
   const frontmatter = fm as PostFrontmatter
   try {
+    // 合集约束：必须指向已存在的合集（「先有合集才有文章」）
+    const collection = frontmatter.collection ?? ''
+    const target = await ctx.collections.get(collection)
+    if (!target) return badRequest(res, `合集「${collection}」不存在，请先创建合集`)
+
+    // order 分配：新建 / 未设置 order / 换了合集 → 追加到合集末尾（max+1）
+    const existing = await ctx.store.get(slug)
+    const orderStale =
+      !existing ||
+      existing.collection !== collection ||
+      typeof existing.order !== 'number'
+    if (orderStale)
+      frontmatter.order = await nextOrderInCollection(ctx.store, collection, slug)
+
     const saved = await ctx.store.save(slug, frontmatter, bodyRaw)
     json(res, 200, saved)
   } catch (err) {
     status500(res, err)
   }
+}
+
+/** 合集内下一个可用序号：现有最大 order + 1（跳过本 slug 自身，从 1 开始）。 */
+async function nextOrderInCollection(
+  store: PostsStore,
+  collection: string,
+  excludeSlug: string,
+): Promise<number> {
+  const posts = await store.list()
+  let max = 0
+  for (const p of posts) {
+    if (p.collection !== collection || p.slug === excludeSlug) continue
+    if (typeof p.order === 'number' && p.order > max) max = p.order
+  }
+  return max + 1
 }
 
 async function handleRemove(
@@ -192,6 +252,86 @@ async function handleTrashRemove(
   res.end()
 }
 
+// ---------- 合集路由 ----------
+
+async function handleCollectionList(
+  res: ServerResponse,
+  ctx: AdminContext,
+): Promise<void> {
+  json(res, 200, await ctx.collections.list())
+}
+
+async function handleCollectionGet(
+  res: ServerResponse,
+  slug: string,
+  ctx: AdminContext,
+): Promise<void> {
+  const slugCheck = validateSlug(slug)
+  if (!slugCheck.ok) return badRequest(res, slugCheck.error)
+  const rec = await ctx.collections.get(slugCheck.slug)
+  if (!rec) return notFound(res)
+  json(res, 200, rec)
+}
+
+async function handleCollectionCreate(
+  res: ServerResponse,
+  req: IncomingMessage,
+  ctx: AdminContext,
+): Promise<void> {
+  let parsed: any
+  try {
+    parsed = JSON.parse((await readBody(req)).toString('utf8'))
+  } catch {
+    return badRequest(res, '请求体不是合法 JSON')
+  }
+  const fm = parsed?.frontmatter
+  const fmErr = validateCollectionFrontmatter(fm)
+  if (fmErr) return badRequest(res, fmErr)
+  const created = await ctx.collections.create(fm as CollectionFrontmatter)
+  json(res, 200, created)
+}
+
+async function handleCollectionSave(
+  res: ServerResponse,
+  slug: string,
+  req: IncomingMessage,
+  ctx: AdminContext,
+): Promise<void> {
+  let parsed: any
+  try {
+    parsed = JSON.parse((await readBody(req)).toString('utf8'))
+  } catch {
+    return badRequest(res, '请求体不是合法 JSON')
+  }
+  const fm = parsed?.frontmatter
+  const fmErr = validateCollectionFrontmatter(fm)
+  if (fmErr) return badRequest(res, fmErr)
+  const slugCheck = validateSlug(slug)
+  if (!slugCheck.ok) return badRequest(res, slugCheck.error)
+  const saved = await ctx.collections.save(slugCheck.slug, fm as CollectionFrontmatter)
+  json(res, 200, saved)
+}
+
+async function handleCollectionRemove(
+  res: ServerResponse,
+  slug: string,
+  ctx: AdminContext,
+): Promise<void> {
+  const slugCheck = validateSlug(slug)
+  if (!slugCheck.ok) return badRequest(res, slugCheck.error)
+  // 非空合集拒绝删除（「先有合集才有文章」，文章需先迁移/删除）
+  const posts = await ctx.store.list()
+  const owned = posts.filter((p) => p.collection === slugCheck.slug)
+  if (owned.length > 0) {
+    throw new ConflictError(
+      `合集内还有 ${owned.length} 篇文章，请先移出或删除后再删除合集`,
+    )
+  }
+  await ctx.collections.remove(slugCheck.slug)
+  res.statusCode = 204
+  res.end()
+}
+
 async function handleUpload(
   res: ServerResponse,
   req: IncomingMessage,
@@ -222,6 +362,11 @@ function validateFrontmatter(fm: unknown): string | null {
   const d = (fm as PostFrontmatter).date
   if (typeof t !== 'string' || t.length === 0) return 'frontmatter.title 必填'
   if (!isValidDate(d)) return 'frontmatter.date 必须为 YYYY-MM-DD'
+  const collection = (fm as PostFrontmatter).collection
+  if (typeof collection !== 'string' || collection.length === 0)
+    return 'frontmatter.collection 必填（文章必须归属一个合集）'
+  const slugCheck = validateSlug(collection)
+  if (!slugCheck.ok) return `frontmatter.collection 不合法：${slugCheck.error}`
   const tags = (fm as PostFrontmatter).tags
   if (tags !== undefined && (!Array.isArray(tags) || tags.some((x) => typeof x !== 'string')))
     return 'frontmatter.tags 必须为字符串数组'
@@ -229,6 +374,23 @@ function validateFrontmatter(fm: unknown): string | null {
   if (excerpt !== undefined && typeof excerpt !== 'string') return 'frontmatter.excerpt 必须为字符串'
   const cover = (fm as PostFrontmatter).cover
   if (cover !== undefined && typeof cover !== 'string') return 'frontmatter.cover 必须为字符串'
+  return null
+}
+
+function validateCollectionFrontmatter(fm: unknown): string | null {
+  if (typeof fm !== 'object' || fm === null) return '缺少 frontmatter'
+  const t = (fm as CollectionFrontmatter).title
+  if (typeof t !== 'string' || t.length === 0) return 'frontmatter.title 必填'
+  const description = (fm as CollectionFrontmatter).description
+  if (description !== undefined && typeof description !== 'string')
+    return 'frontmatter.description 必须为字符串'
+  const cover = (fm as CollectionFrontmatter).cover
+  if (cover !== undefined && typeof cover !== 'string') return 'frontmatter.cover 必须为字符串'
+  const draft = (fm as CollectionFrontmatter).draft
+  if (draft !== undefined && typeof draft !== 'boolean') return 'frontmatter.draft 必须为布尔值'
+  const createdAt = (fm as CollectionFrontmatter).createdAt
+  if (createdAt !== undefined && !isValidDate(createdAt))
+    return 'frontmatter.createdAt 必须为 YYYY-MM-DD'
   return null
 }
 

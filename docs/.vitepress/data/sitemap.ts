@@ -5,6 +5,7 @@
  */
 import { aggregateTags } from '../lib/tags'
 import type { PostMeta } from '../lib/tags'
+import type { CollectionMeta } from '../lib/collections'
 
 export interface SitemapSite {
   url: string
@@ -28,15 +29,22 @@ function loc(siteUrl: string, pathname: string): string {
 
 /**
  * 生成 sitemap XML。
- * 静态页：/、/about、/tags、/archives；动态页：/tags/<tag>、/posts/<slug>.html。
- * 标签列表由 posts 内部聚合（与标签页/归档一致），与 excerpt 无关。
+ * 静态页：/、/about、/tags、/archives；动态页：/collections/<slug>、/tags/<tag>、/posts/<slug>.html。
+ * 标签列表由 posts 内部聚合（与标签页/归档一致）；草稿合集不入 sitemap。
  */
-export function buildSitemapXml(posts: PostMeta[], site: SitemapSite): string {
+export function buildSitemapXml(
+  posts: PostMeta[],
+  site: SitemapSite,
+  collections: CollectionMeta[] = [],
+): string {
   const staticPaths = ['/', '/about', '/tags', '/archives']
+  const collectionPaths = collections
+    .filter((c) => !c.draft)
+    .map((c) => `/collections/${encodeURIComponent(c.slug)}`)
   const tagPaths = aggregateTags(posts).map((t) => `/tags/${encodeURIComponent(t.tag)}`)
   const postPaths = posts.map((p) => `/posts/${p.slug}.html`)
 
-  const urls = [...staticPaths, ...tagPaths, ...postPaths]
+  const urls = [...staticPaths, ...collectionPaths, ...tagPaths, ...postPaths]
     .map((pathname) => {
       return `  <url>
     <loc>${esc(loc(site.url, pathname))}</loc>

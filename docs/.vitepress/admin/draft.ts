@@ -11,6 +11,10 @@ export interface DraftFrontmatter {
   cover: string
   draft: boolean
   pinned: boolean
+  /** 所属合集 slug（必填，「先有合集才有文章」） */
+  collection: string
+  /** 合集内序号（服务端保存时自动分配，编辑器只读展示） */
+  order?: number
 }
 
 export interface Draft {

@@ -37,6 +37,8 @@ export default createContentLoader('posts/*.md', {
         cover: d.frontmatter.cover,
         draft: d.frontmatter.draft,
         pinned: d.frontmatter.pinned,
+        collection: d.frontmatter.collection,
+        order: d.frontmatter.order,
       }))
       .sort(comparePosts)
 

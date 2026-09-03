@@ -18,6 +18,22 @@ export interface PostFrontmatter {
   draft?: boolean
   /** 置顶：true 时公开列表中排在未置顶之前（同组内再按 date 倒序） */
   pinned?: boolean
+  /** 所属合集 slug（collections/ 下某合集文件名，必填） */
+  collection?: string
+  /** 合集内序号（从 1 起，服务端保存时自动分配，追加到合集末尾） */
+  order?: number
+}
+
+/** 合集文件的 frontmatter（docs/collections/<slug>.md）。 */
+export interface CollectionFrontmatter {
+  title: string
+  /** 简介：合集卡片与详情页头部展示 */
+  description?: string
+  cover?: string
+  /** 草稿合集不进入首页与动态路由 */
+  draft?: boolean
+  /** YYYY-MM-DD，创建日期（决定合集展示顺序） */
+  createdAt?: string
 }
 
 export const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
@@ -26,8 +42,8 @@ export function isValidDate(date: unknown): boolean {
   return typeof date === 'string' && DATE_PATTERN.test(date)
 }
 
-export interface FrontmatterParseResult {
-  frontmatter: Partial<PostFrontmatter> | null
+export interface FrontmatterParseResult<T = PostFrontmatter> {
+  frontmatter: Partial<T> | null
   /** 正文（不含 frontmatter 区块，去掉与区块之间的前导空行） */
   body: string
 }
@@ -35,7 +51,7 @@ export interface FrontmatterParseResult {
 const FM_SEPARATOR = '---'
 
 /** 从全文提取 frontmatter 与正文；无有效区块则 frontmatter 为 null、body 为原文。 */
-export function extractFrontmatter(raw: string): FrontmatterParseResult {
+export function extractFrontmatter<T = PostFrontmatter>(raw: string): FrontmatterParseResult<T> {
   const lines = raw.split(/\r?\n/)
   if (lines[0]?.trim() !== FM_SEPARATOR) {
     return { frontmatter: null, body: raw }
@@ -63,13 +79,10 @@ export function extractFrontmatter(raw: string): FrontmatterParseResult {
     .replace(/^\n+/, '')
     .replace(/\n+$/, '')
 
-  let frontmatter: Partial<PostFrontmatter> | null = null
+  let frontmatter: Partial<T> | null = null
   try {
     const parsed = yamlLoad(yamlLines.join('\n'))
-    frontmatter =
-      parsed && typeof parsed === 'object'
-        ? (parsed as Partial<PostFrontmatter>)
-        : null
+    frontmatter = parsed && typeof parsed === 'object' ? (parsed as Partial<T>) : null
   } catch {
     frontmatter = null
   }
@@ -78,12 +91,12 @@ export function extractFrontmatter(raw: string): FrontmatterParseResult {
 }
 
 /** 序列化一个 frontmatter 对象为 YAML 区块（含 `---` 包裹，字段顺序稳定）。 */
-export function serializeFrontmatter(fm: PostFrontmatter): string {
+export function serializeFrontmatter<T extends object>(fm: T): string {
   const dumped = yamlDump(fm, { lineWidth: -1 }).trimEnd()
   return `${FM_SEPARATOR}\n${dumped}\n${FM_SEPARATOR}`
 }
 
 /** 拼接完整的 Markdown 文档内容（frontmatter 区块 + 空行 + 正文）。 */
-export function buildMarkdown(fm: PostFrontmatter, body: string): string {
+export function buildMarkdown<T extends object>(fm: T, body: string): string {
   return `${serializeFrontmatter(fm)}\n\n${body}`.trimEnd() + '\n'
 }

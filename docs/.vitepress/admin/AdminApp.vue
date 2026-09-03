@@ -1,20 +1,22 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { NButton, NTabs, NTabPane } from 'naive-ui'
 import { useMessage, useDialog } from 'naive-ui'
 import PostList, { type ListItem } from './PostList.vue'
 import TrashList, { type TrashItem } from './TrashList.vue'
+import CollectionList, { type CollectionItem, type CollectionFormValue } from './CollectionList.vue'
 import { newSlug } from '../lib/slug'
 import { DRAFT_KEY, todayStr, type Draft } from './draft'
 
-type View = 'posts' | 'trash'
+type View = 'collections' | 'posts' | 'trash'
 
 const message = useMessage()
 const dialog = useDialog()
 
 const list = ref<ListItem[]>([])
 const trash = ref<TrashItem[]>([])
-const view = ref<View>('posts')
+const collections = ref<CollectionItem[]>([])
+const view = ref<View>('collections') // 「先有合集才有文章」：默认落在合集 tab
 
 async function loadList() {
   list.value = await api<ListItem[]>('/api/admin/posts')
@@ -26,13 +28,47 @@ async function loadTrash() {
     .catch(() => (trash.value = []))
 }
 
-onMounted(() => {
+async function loadCollections() {
+  const [raw, posts] = await Promise.all([
+    api<
+      {
+        slug: string
+        title: string
+        description?: string
+        cover?: string
+        draft?: boolean
+        createdAt?: string
+      }[]
+    >('/api/admin/collections'),
+    api<ListItem[]>('/api/admin/posts'),
+  ])
+  const countBy = new Map<string, number>()
+  for (const p of posts) {
+    if (!p.collection) continue
+    countBy.set(p.collection, (countBy.get(p.collection) ?? 0) + 1)
+  }
+  collections.value = raw.map((c) => ({ ...c, count: countBy.get(c.slug) ?? 0 }))
+}
+
+function reloadAll() {
   loadList()
   loadTrash()
-  // 从编辑器标签返回时刷新列表，保证标题/置顶等改动即时可见
-  window.addEventListener('focus', loadList)
+  loadCollections()
+}
+
+/** 合集 slug → 标题，供文章表格展示合集名 */
+const collectionTitles = computed<Record<string, string>>(() => {
+  const map: Record<string, string> = {}
+  for (const c of collections.value) map[c.slug] = c.title
+  return map
 })
-onBeforeUnmount(() => window.removeEventListener('focus', loadList))
+
+onMounted(() => {
+  reloadAll()
+  // 从编辑器标签返回时刷新列表，保证标题/置顶等改动即时可见
+  window.addEventListener('focus', reloadAll)
+})
+onBeforeUnmount(() => window.removeEventListener('focus', reloadAll))
 
 /** 把草稿写入 sessionStorage 并在当前标签跳转到全屏编辑器页。 */
 function openEditor(draft: Draft) {
@@ -49,6 +85,8 @@ async function selectPost(slug: string) {
     cover?: string
     draft?: boolean
     pinned?: boolean
+    collection?: string
+    order?: number
     body?: string
   }>(`/api/admin/posts/${encodeURIComponent(slug)}`)
   const draft: Draft = {
@@ -61,13 +99,16 @@ async function selectPost(slug: string) {
       cover: rec.cover ?? '',
       draft: rec.draft ?? false,
       pinned: rec.pinned ?? false,
+      collection: rec.collection ?? '',
+      order: rec.order,
     },
     body: rec.body ?? '',
   }
   openEditor(draft)
 }
 
-function newPost() {
+/** 新建文章：合集必选（合集 tab 的「写文章」直接带 slug 进入）。 */
+function newPost(collection: string) {
   const draft: Draft = {
     slug: newSlug(), // 系统生成 UUID，用户不参与定义
     frontmatter: {
@@ -78,10 +119,75 @@ function newPost() {
       cover: '',
       draft: false,
       pinned: false,
+      collection,
     },
     body: '',
   }
   openEditor(draft)
+}
+
+/** 文章 tab 的新建按钮：默认选第一个合集（无合集则引导去合集 tab）。 */
+function newPostDefaultCollection() {
+  if (!collections.value.length) {
+    message.warning('请先创建合集，再写文章')
+    view.value = 'collections'
+    return
+  }
+  newPost(collections.value[0].slug)
+}
+
+// ---- 合集 CRUD ----
+
+async function createCollection(value: CollectionFormValue) {
+  const res = await fetch('/api/admin/collections', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ frontmatter: value }),
+  })
+  if (res.ok) {
+    await loadCollections()
+    message.success('合集已创建')
+  } else {
+    const data = await res.json().catch(() => ({}))
+    message.error((data as { error?: string }).error || '创建失败')
+  }
+}
+
+async function saveCollection(slug: string, value: CollectionFormValue) {
+  const res = await fetch(`/api/admin/collections/${encodeURIComponent(slug)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ frontmatter: value }),
+  })
+  if (res.ok) {
+    await loadCollections()
+    message.success('合集已保存')
+  } else {
+    const data = await res.json().catch(() => ({}))
+    message.error((data as { error?: string }).error || '保存失败')
+  }
+}
+
+function removeCollection(slug: string) {
+  dialog.warning({
+    title: '删除合集',
+    content: `删除合集「${slug}」？仅允许删除空合集，合集内还有文章时会被拒绝。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    async onPositiveClick() {
+      const res = await fetch(`/api/admin/collections/${encodeURIComponent(slug)}`, {
+        method: 'DELETE',
+      })
+      if (res.ok) {
+        await loadCollections()
+        message.success('合集已删除')
+      } else {
+        const data = await res.json().catch(() => ({}))
+        message.error((data as { error?: string }).error || '删除失败')
+      }
+      return true
+    },
+  })
 }
 
 async function removePost(slug: string) {
@@ -222,7 +328,7 @@ async function api<T>(path: string): Promise<T> {
     <header class="topbar">
       <div class="brand">写作后台</div>
       <div class="actions">
-        <n-button type="primary" @click="newPost">＋ 新建文章</n-button>
+        <n-button type="primary" @click="newPostDefaultCollection">＋ 新建文章</n-button>
       </div>
     </header>
 
@@ -234,6 +340,9 @@ async function api<T>(path: string): Promise<T> {
         :value="view"
         @update:value="(v) => (view = v as View)"
       >
+        <n-tab-pane name="collections">
+          <template #tab>合集（{{ collections.length }}）</template>
+        </n-tab-pane>
         <n-tab-pane name="posts">
           <template #tab>文章（{{ list.length }}）</template>
         </n-tab-pane>
@@ -244,9 +353,18 @@ async function api<T>(path: string): Promise<T> {
     </nav>
 
     <main class="content">
+      <CollectionList
+        v-if="view === 'collections'"
+        :items="collections"
+        @write="newPost"
+        @remove="removeCollection"
+        @create="createCollection"
+        @save="saveCollection"
+      />
       <PostList
-        v-if="view === 'posts'"
+        v-else-if="view === 'posts'"
         :items="list"
+        :collection-titles="collectionTitles"
         @edit="selectPost"
         @remove="removePost"
         @remove-many="removeManyPosts"

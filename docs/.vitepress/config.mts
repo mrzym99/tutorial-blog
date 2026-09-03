@@ -22,7 +22,8 @@ const envLocal: Record<string, string> = (() => {
   try {
     const text = readFileSync(path.join(process.cwd(), ".env.local"), "utf8");
     const map: Record<string, string> = {};
-    for (const m of text.matchAll(/^\s*([A-Za-z_][\w]*)\s*=\s*"?([^\s"\n]*)"?\s*$/gm)) {
+    // 注意 [ \t] 而非 \s：值为空时 \s 会吞掉换行，把下一行误当成当前 key 的值
+    for (const m of text.matchAll(/^\s*([A-Za-z_][\w]*)[ \t]*=[ \t]*"?([^\s"\n]*)"?[ \t]*$/gm)) {
       map[m[1]] = m[2];
     }
     return map;
@@ -126,11 +127,37 @@ export default defineConfig({
 /** 构建结束后生成 rss.xml 与 sitemap.xml 到输出目录（复用同一份 posts 数据）。 */
 async function generateFeedFiles(siteConfig: { srcDir: string; outDir: string }): Promise<void> {
   const posts = await collectPostMetas(siteConfig.srcDir);
+  const collections = await collectCollectionMetas(siteConfig.srcDir);
   const xml = buildRssXml(posts, { ...SITE });
-  const sitemap = buildSitemapXml(posts, { ...SITE });
+  const sitemap = buildSitemapXml(posts, { ...SITE }, collections);
   await fs.mkdir(siteConfig.outDir, { recursive: true });
   await fs.writeFile(path.join(siteConfig.outDir, "rss.xml"), xml);
   await fs.writeFile(path.join(siteConfig.outDir, "sitemap.xml"), sitemap);
+}
+
+/** 扫描 collections/ 每个合集，提取 CollectionMeta（供 sitemap 使用，草稿在 sitemap 内过滤）。 */
+async function collectCollectionMetas(
+  docsDir: string,
+): Promise<{ slug: string; title: string; draft?: boolean }[]> {
+  let entries: string[];
+  try {
+    entries = await fs.readdir(path.join(docsDir, "collections"));
+  } catch {
+    return [];
+  }
+  const collections: { slug: string; title: string; draft?: boolean }[] = [];
+  for (const name of entries) {
+    if (!name.endsWith(".md") || name.startsWith(".")) continue;
+    const raw = await fs.readFile(path.join(docsDir, "collections", name), "utf8");
+    const { frontmatter } = extractFrontmatter(raw);
+    if (!frontmatter?.title) continue;
+    collections.push({
+      slug: name.slice(0, -".md".length),
+      title: frontmatter.title,
+      draft: frontmatter.draft,
+    });
+  }
+  return collections;
 }
 
 /** 扫描 posts/ 每篇文章，提取 PostMeta 并按 date 倒序（供 RSS 与 sitemap 共用）。 */
@@ -156,6 +183,8 @@ async function collectPostMetas(docsDir: string): Promise<PostMeta[]> {
       cover: frontmatter.cover,
       draft: frontmatter.draft,
       pinned: frontmatter.pinned,
+      collection: frontmatter.collection,
+      order: frontmatter.order,
     });
   }
   posts.sort(comparePosts);

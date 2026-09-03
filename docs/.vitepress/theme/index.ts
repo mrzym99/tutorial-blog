@@ -6,6 +6,8 @@ import HomePostList from './components/HomePostList.vue'
 import ArchiveList from './components/ArchiveList.vue'
 import TagIndex from './components/TagIndex.vue'
 import TagPostList from './components/TagPostList.vue'
+import CollectionIndex from './components/CollectionIndex.vue'
+import CollectionPostList from './components/CollectionPostList.vue'
 import GiscusComment from './components/GiscusComment.vue'
 import AdminPlaceholder from '../admin/AdminPlaceholder.vue'
 import './style.css'
@@ -30,6 +32,8 @@ export default {
     app.component('ArchiveList', ArchiveList)
     app.component('TagIndex', TagIndex)
     app.component('TagPostList', TagPostList)
+    app.component('CollectionIndex', CollectionIndex)
+    app.component('CollectionPostList', CollectionPostList)
     app.component('GiscusComment', GiscusComment)
   },
 } satisfies Theme

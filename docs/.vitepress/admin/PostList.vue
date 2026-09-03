@@ -10,9 +10,11 @@ export interface ListItem {
   excerpt?: string;
   draft?: boolean;
   pinned?: boolean;
+  collection?: string;
 }
 
-const props = defineProps<{ items: ListItem[] }>();
+/** 合集 slug → 标题映射，用于「合集」列展示 */
+const props = defineProps<{ items: ListItem[]; collectionTitles?: Record<string, string> }>();
 const emit = defineEmits<{ edit: [slug: string]; remove: [slug: string]; removeMany: [slugs: string[]] }>();
 
 /** 勾选的行（slug），批量删除用 */
@@ -38,6 +40,16 @@ const columns = [
         badges.push(h(NTag, { size: "small", type: "warning", bordered: false }, { default: () => "置顶" }));
       if (row.draft) badges.push(h(NTag, { size: "small", bordered: false }, { default: () => "草稿" }));
       return h("div", { style: "display:flex;align-items:center;gap:8px;" }, [row.title, ...badges]);
+    },
+  },
+  {
+    title: "合集",
+    key: "collection",
+    width: 160,
+    ellipsis: { tooltip: true },
+    render(row: ListItem) {
+      if (!row.collection) return h("span", { style: "color:var(--vp-c-text-3);" }, "未分组");
+      return props.collectionTitles?.[row.collection] ?? row.collection;
     },
   },
   {

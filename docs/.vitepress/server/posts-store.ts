@@ -21,6 +21,8 @@ export interface PostMeta {
   cover?: string
   draft?: boolean
   pinned?: boolean
+  collection?: string
+  order?: number
 }
 
 export interface PostRecord extends PostMeta {
@@ -82,6 +84,8 @@ export class PostsStore {
         cover: frontmatter.cover,
         draft: frontmatter.draft,
         pinned: frontmatter.pinned,
+        collection: frontmatter.collection,
+        order: frontmatter.order,
       })
     }
     return metas.sort(
@@ -104,6 +108,8 @@ export class PostsStore {
         cover: frontmatter?.cover,
         draft: frontmatter?.draft,
         pinned: frontmatter?.pinned,
+        collection: frontmatter?.collection,
+        order: frontmatter?.order,
         body,
         raw,
       }
@@ -253,7 +259,8 @@ function assertValidSlug(slug: string): string {
   return result.slug
 }
 
-function isENOENT(err: unknown): boolean {
+/** 判断是否为文件系统 ENOENT（文件/目录不存在）。 */
+export function isENOENT(err: unknown): boolean {
   return (
     typeof err === 'object' &&
     err !== null &&
