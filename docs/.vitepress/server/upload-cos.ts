@@ -52,15 +52,12 @@ type UploadFn = (f: UploadFile) => Promise<UploadResult>
 /** 校验配置是否齐全；缺项抛 CosError（中文提示，routes 会映射为 503）。 */
 export function assertCosConfig(cfg: Partial<CosConfig> | null | undefined): CosConfig {
   const missing: string[] = []
-  const required: Array<[string, string]> = [
-    ['secretId', cfg?.secretId ?? ''],
-    ['secretKey', cfg?.secretKey ?? ''],
-    ['bucket', cfg?.bucket ?? ''],
-    ['region', cfg?.region ?? ''],
-    ['domain', cfg?.domain ?? ''],
-  ]
-  for (const [name, val] of required) {
+  const required = ['secretId', 'secretKey', 'bucket', 'region', 'domain'] as const
+  const values = {} as Record<(typeof required)[number], string>
+  for (const name of required) {
+    const val = cfg?.[name]
     if (typeof val !== 'string' || val.length === 0) missing.push(`COS_${name.toUpperCase()}`)
+    else values[name] = val
   }
   if (missing.length) {
     throw new CosError(
@@ -68,12 +65,12 @@ export function assertCosConfig(cfg: Partial<CosConfig> | null | undefined): Cos
     )
   }
   return {
-    secretId: cfg!.secretId,
-    secretKey: cfg!.secretKey,
-    bucket: cfg!.bucket,
-    region: cfg!.region,
-    domain: cfg!.domain,
-    keyPrefix: cfg!.keyPrefix?.trim() || 'uploads',
+    secretId: values.secretId,
+    secretKey: values.secretKey,
+    bucket: values.bucket,
+    region: values.region,
+    domain: values.domain,
+    keyPrefix: cfg?.keyPrefix?.trim() || 'uploads',
   }
 }
 
@@ -94,7 +91,7 @@ export function buildCosObjectKey(
   mime: string,
   prefix = 'uploads',
   date = new Date(),
-  id = crypto.randomUUID(),
+  id: string = crypto.randomUUID(),
 ): string {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
@@ -113,12 +110,13 @@ export function createCosUploader(
   cfg: CosConfig,
   client?: CosClientLike,
 ): UploadFn {
+  // SDK 的 putObject 重载签名与注入用的窄接口不兼容，此处统一收敛为 CosClientLike
   const cos: CosClientLike =
     client ??
-    new COS({
+    (new COS({
       SecretId: cfg.secretId,
       SecretKey: cfg.secretKey,
-    })
+    }) as unknown as CosClientLike)
 
   return async (file: UploadFile): Promise<UploadResult> => {
     const key = buildCosObjectKey(file.filename, file.mime, cfg.keyPrefix)

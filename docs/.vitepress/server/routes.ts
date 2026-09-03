@@ -64,13 +64,6 @@ export interface AdminContext {
   uploader?: Uploader | null
 }
 
-type JSONPrimitive = string | number | boolean | null
-type JSONValue = JSONPrimitive | JSONArray | JSONObject
-interface JSONArray extends Array<JSONValue> {}
-interface JSONObject {
-  [k: string]: JSONValue
-}
-
 export async function handleAdminRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -288,7 +281,7 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(chunks)
 }
 
-function json(res: ServerResponse, status: number, data: JSONValue): void {
+function json(res: ServerResponse, status: number, data: unknown): void {
   const payload = JSON.stringify(data)
   res.statusCode = status
   res.setHeader('Content-Type', 'application/json; charset=utf-8')

@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { NButton, NModal, NSpace, NForm, NFormItem, NInput, NDatePicker, NSwitch, NTag, NDivider } from 'naive-ui'
+import { NButton, NModal, NForm, NFormItem, NInput, NDatePicker, NSwitch, NTag, NDivider } from 'naive-ui'
 import { useMessage, useDialog } from 'naive-ui'
 import PostEditor from './PostEditor.vue'
-import { DRAFT_KEY, todayStr, type Draft, type DraftFrontmatter } from './draft'
+import { DRAFT_KEY, type Draft, type DraftFrontmatter } from './draft'
 
 /**
  * 沉浸式编辑器：编辑区占满，元数据通过弹窗修改。

@@ -15,6 +15,10 @@ export interface PostsData {
   tags: TagAgg[]
 }
 
+// `data` 由 VitePress 构建时注入（transform 的返回值），TS 不感知虚拟导出，手动声明类型
+declare const data: PostsData
+export { data }
+
 export default createContentLoader('posts/*.md', {
   transform(raw): PostsData {
     const posts: PostMeta[] = raw

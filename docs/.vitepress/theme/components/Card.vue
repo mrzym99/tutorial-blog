@@ -13,7 +13,9 @@
   background: var(--vp-c-bg);
   border-radius: 12px;
   box-shadow: var(--vp-shadow-2);
-  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+  transition:
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
 }
 .card:hover {
   box-shadow: var(--vp-shadow-3);
@@ -24,7 +26,6 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 .dark .card:hover {
-  border-color: var(--vp-c-brand-1);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
 }
 </style>
