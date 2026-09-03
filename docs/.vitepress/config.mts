@@ -2,7 +2,6 @@ import { defineConfig } from "vitepress";
 import path from "node:path";
 import { promises as fs, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { SITE } from "./const";
 import { adminPlugin } from "./server/plugin";
 import { extractFrontmatter } from "./lib/frontmatter";
 import { comparePosts } from "./lib/tags";
@@ -12,27 +11,58 @@ import { buildSitemapXml } from "./data/sitemap";
 import { createCosUploader, assertCosConfig } from "./server/upload-cos";
 import type { CosConfig } from "./server/upload-cos";
 import type { Uploader } from "./server/routes";
+import type { GiscusConfig } from "./theme/giscus";
 
 const docsDir = fileURLToPath(new URL("..", import.meta.url));
 const postsDir = path.join(docsDir, "posts");
 
-// 读取项目根 .env.local 中的 COS 配置（避免引入额外依赖解析 .env）。
-// 仅 dev 中间件使用，不进入浏览器包；缺失时上传接口 503。
-function loadCosConfig(): Partial<CosConfig> | null {
+// 读取项目根 .env.local（避免引入额外依赖解析 .env）。进程环境变量优先，
+// 便于 CI / Cloudflare Pages 构建时直接在面板中注入。
+const envLocal: Record<string, string> = (() => {
   try {
     const text = readFileSync(path.join(process.cwd(), ".env.local"), "utf8");
-    const pick = (key: string): string | undefined =>
-      new RegExp(`^${key}\\s*=\\s*"?([^\\s"\\n]+)"?`, "m").exec(text)?.[1];
-    const secretId = pick("COS_SECRET_ID");
-    const secretKey = pick("COS_SECRET_KEY");
-    const bucket = pick("COS_BUCKET");
-    const region = pick("COS_REGION");
-    const domain = pick("COS_DOMAIN");
-    if (!secretId && !secretKey && !bucket && !region && !domain) return null;
-    return { secretId, secretKey, bucket, region, domain };
+    const map: Record<string, string> = {};
+    for (const m of text.matchAll(/^\s*([A-Za-z_][\w]*)\s*=\s*"?([^\s"\n]*)"?\s*$/gm)) {
+      map[m[1]] = m[2];
+    }
+    return map;
   } catch {
-    return null;
+    return {};
   }
+})();
+
+const pickEnv = (key: string): string => process.env[key] || envLocal[key] || "";
+
+// 站点信息来自环境变量（SITE_*，见 .env.example），用于页面标题、描述与 RSS/sitemap
+// 中的规范地址。url 以 https:// 开头、结尾不带斜杠，缺失时回退占位值并在构建时告警。
+const SITE = {
+  title: pickEnv("SITE_TITLE") || "教程博客",
+  description: pickEnv("SITE_DESCRIPTION") || "记录前端与工程实践的教程文章",
+  url: (pickEnv("SITE_URL") || "https://example.com").replace(/\/+$/, ""),
+};
+
+// Giscus 评论参数来自环境变量（GISCUS_*，见 .env.example）。
+// 三项必需值齐备才注入，否则组件不挂载评论区。
+const giscusConfig: GiscusConfig | null = (() => {
+  const config: GiscusConfig = {
+    repo: pickEnv("GISCUS_REPO"),
+    repoId: pickEnv("GISCUS_REPO_ID"),
+    category: pickEnv("GISCUS_CATEGORY") || "Announcements",
+    categoryId: pickEnv("GISCUS_CATEGORY_ID"),
+    mapping: pickEnv("GISCUS_MAPPING") || "pathname",
+  };
+  return config.repo && config.repoId && config.categoryId ? config : null;
+})();
+
+// COS 上传配置：仅 dev 中间件使用，不进入浏览器包；缺失时上传接口 503。
+function loadCosConfig(): Partial<CosConfig> | null {
+  const secretId = pickEnv("COS_SECRET_ID");
+  const secretKey = pickEnv("COS_SECRET_KEY");
+  const bucket = pickEnv("COS_BUCKET");
+  const region = pickEnv("COS_REGION");
+  const domain = pickEnv("COS_DOMAIN");
+  if (!secretId && !secretKey && !bucket && !region && !domain) return null;
+  return { secretId, secretKey, bucket, region, domain };
 }
 
 /** 构建 COS 上传器；任一必需项缺失则返回 null（此时 /api/admin/upload 返回 503）。 */
@@ -56,6 +86,10 @@ export default defineConfig({
   ignoreDeadLinks: true,
 
   vite: {
+    // 注入 Giscus 评论配置（值公开无密钥）；未配置时为 null，组件跳过挂载
+    define: {
+      __GISCUS__: JSON.stringify(giscusConfig),
+    },
     plugins: [
       adminPlugin({
         postsDir,
@@ -80,6 +114,11 @@ export default defineConfig({
   },
 
   async buildEnd(siteConfig) {
+    if (SITE.url.includes("example.com")) {
+      console.warn(
+        "[site] SITE_URL 仍为占位值，RSS/sitemap 中的文章链接将指向 example.com，请在环境变量中配置真实域名",
+      );
+    }
     await generateFeedFiles(siteConfig);
   },
 });

@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount } from 'vue'
-import { GISCUS } from '../../const'
+import { GISCUS } from '../giscus'
 
 const CONTAINER_ID = 'giscus-comments'
 
 // 按当前页面 SPA 路由重建 Giscus；卸载时清理，避免重复加载
 function mount() {
   const container = document.getElementById(CONTAINER_ID)
-  if (!container) return
+  // GISCUS 为 null 表示环境变量（GISCUS_*）未配置齐备，不渲染评论区
+  if (!container || !GISCUS) return
   container.innerHTML = ''
 
   const theme = getPreferredTheme()

@@ -59,9 +59,19 @@ pnpm test
 
 ## 配置
 
-三处占位配置，都只改源码、不进构建产物敏感信息。
+所有配置均走环境变量：本地写 `.env.local`，CI / Cloudflare Pages 在环境变量面板注入（进程环境变量优先）。变量含义见 `.env.example`。
 
-### 1. 腾讯云 COS（图床）
+### 1. 站点信息（环境变量 `SITE_*`）
+
+```
+SITE_TITLE=教程博客
+SITE_DESCRIPTION=记录前端与工程实践的教程文章
+SITE_URL=https://tutorial-blog.pages.dev
+```
+
+`SITE_URL` 为部署后的线上域名，RSS 与 sitemap 会据此生成每篇文章的规范地址；仍是占位值时构建会告警。`SITE_TITLE` / `SITE_DESCRIPTION` 未配置时使用默认文案。
+
+### 2. 腾讯云 COS（图床）
 
 在项目根 `.env.local` 填入五项（`.env.example` 有说明）：
 
@@ -78,26 +88,31 @@ COS_DOMAIN=https://img.example.com
 - **域名**：把已备案的自定义域名（或 CDN 域名）填到 `COS_DOMAIN`，上传后返回该域名下的图片 URL，与你站点同域、国内稳定访问。
 - `.env.local` 已被 `.gitignore` 忽略。未配置时上传返回 503 并提示配置方法。
 
-### 2. 站点域名 `SITE.url`
-
-编辑 `docs/.vitepress/const.ts` 中的 `SITE.url`，替换为部署后的线上域名（如 `https://tutorial-blog.pages.dev`）。RSS 与 sitemap 会据此生成每篇文章的规范地址。
-
-### 3. Giscus 评论 `GISCUS`
+### 3. Giscus 评论（环境变量 `GISCUS_*`，可选）
 
 1. 确认你的 GitHub 仓库已开启 **Discussions**（Settings → Features → Discussions ✓）。
 2. 打开 https://giscus.app，填入仓库并生成脚本。
-3. 把 `data-repo / data-repo-id / data-category / data-category-id` 抄到 `docs/.vitepress/const.ts` 的 `GISCUS` 常量里。
+3. 在项目根 `.env.local`（或 CI / Cloudflare Pages 的环境变量面板）填入（`.env.example` 有说明）：
+
+```
+GISCUS_REPO=owner/repo
+GISCUS_REPO_ID=仓库的graphql_id
+GISCUS_CATEGORY=Announcements
+GISCUS_CATEGORY_ID=分类对应的id
+GISCUS_MAPPING=pathname
+```
+
+配置由构建期读取并注入客户端，源码中不落仓库信息；`GISCUS_REPO` / `GISCUS_REPO_ID` / `GISCUS_CATEGORY_ID` 任一缺失时文章页不显示评论区。
 
 ## 目录结构
 
 ```
 tutorial-blog/
-├─ .env.local                # COS_SECRET_ID 等（.gitignore，不提交）
+├─ .env.local                # SITE_* / COS_* / GISCUS_* 等环境变量（.gitignore，不提交）
 ├─ .env.example              # 模板（提交）
 ├─ docs/
 │  ├─ .vitepress/
-│  │  ├─ config.mts          # VitePress 配置 + dev 插件 + RSS/sitemap buildEnd 钩子
-│  │  ├─ const.ts            # SITE / GISCUS / 图床 Token 配置（占位在此回填）
+│  │  ├─ config.mts          # VitePress 配置 + 环境变量读取 + RSS/sitemap buildEnd 钩子
 │  │  ├─ theme/              # 主题：首页卡片、Giscus 评论、样式
 │  │  ├─ admin/              # 写作后台（仅 dev 完整功能）
 │  │  ├─ server/             # dev 中间件：路由、文件存储、COS 上传代理
@@ -123,7 +138,7 @@ tutorial-blog/
 方式一（推荐）：Cloudflare Pages 连接本 Git 仓库，推送到 `main` 自动构建部署。
 方式二（手动）：`npx wrangler pages deploy docs/.vitepress/dist`。
 
-部署后验证：首页/文章/标签/搜索可访问；`/admin` 显示"仅本地可用"提示；`/api/admin/posts` 返回 404；`rss.xml` 与 `sitemap.xml` 可访问。记得把 `SITE.url` 改为真实域名。
+部署后验证：首页/文章/标签/搜索可访问；`/admin` 显示"仅本地可用"提示；`/api/admin/posts` 返回 404；`rss.xml` 与 `sitemap.xml` 可访问。记得把 `SITE_URL` 配置为真实域名。
 
 ## 测试
 
