@@ -35,7 +35,7 @@ function collectionHref(slug: string): string {
 <style scoped>
 .collection-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 1.25rem;
   margin: 1rem 0;
 }
@@ -81,6 +81,7 @@ function collectionHref(slug: string): string {
 }
 .title {
   margin: 0;
+  padding: 0;
   font-size: 1.08rem;
   font-weight: 700;
   color: var(--vp-c-text-1);

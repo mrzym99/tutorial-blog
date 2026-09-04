@@ -1,11 +1,13 @@
 import { defineConfig } from "vitepress";
+import type { DefaultTheme } from "vitepress";
 import path from "node:path";
-import { promises as fs, readFileSync } from "node:fs";
+import { promises as fs, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { adminPlugin } from "./server/plugin";
 import { extractFrontmatter } from "./lib/frontmatter";
 import { comparePosts } from "./lib/tags";
 import type { PostMeta } from "./lib/tags";
+import { compareCollectionPosts } from "./lib/collections";
 import { buildRssXml } from "./data/rss";
 import { buildSitemapXml } from "./data/sitemap";
 import { createCosUploader, assertCosConfig } from "./server/upload-cos";
@@ -107,6 +109,8 @@ export default defineConfig({
       { text: "标签", link: "/tags" },
       { text: "关于", link: "/about" },
     ],
+    // 合集文章的左侧章节列表（不归属合集的文章无侧栏）
+    sidebar: buildCollectionSidebar(docsDir),
     outline: { label: "本页目录", level: [2, 3] },
     docFooter: { prev: "上一篇", next: "下一篇" },
     returnToTopLabel: "回到顶部",
@@ -126,8 +130,8 @@ export default defineConfig({
 
 /** 构建结束后生成 rss.xml 与 sitemap.xml 到输出目录（复用同一份 posts 数据）。 */
 async function generateFeedFiles(siteConfig: { srcDir: string; outDir: string }): Promise<void> {
-  const posts = await collectPostMetas(siteConfig.srcDir);
-  const collections = await collectCollectionMetas(siteConfig.srcDir);
+  const posts = collectPostMetas(siteConfig.srcDir);
+  const collections = collectCollectionMetas(siteConfig.srcDir);
   const xml = buildRssXml(posts, { ...SITE });
   const sitemap = buildSitemapXml(posts, { ...SITE }, collections);
   await fs.mkdir(siteConfig.outDir, { recursive: true });
@@ -135,20 +139,20 @@ async function generateFeedFiles(siteConfig: { srcDir: string; outDir: string })
   await fs.writeFile(path.join(siteConfig.outDir, "sitemap.xml"), sitemap);
 }
 
-/** 扫描 collections/ 每个合集，提取 CollectionMeta（供 sitemap 使用，草稿在 sitemap 内过滤）。 */
-async function collectCollectionMetas(
+/** 扫描 collections/ 每个合集，提取 CollectionMeta（供侧栏与 sitemap 使用，草稿在 sitemap 内过滤）。 */
+function collectCollectionMetas(
   docsDir: string,
-): Promise<{ slug: string; title: string; draft?: boolean }[]> {
+): { slug: string; title: string; draft?: boolean }[] {
   let entries: string[];
   try {
-    entries = await fs.readdir(path.join(docsDir, "collections"));
+    entries = readdirSync(path.join(docsDir, "collections"));
   } catch {
     return [];
   }
   const collections: { slug: string; title: string; draft?: boolean }[] = [];
   for (const name of entries) {
     if (!name.endsWith(".md") || name.startsWith(".")) continue;
-    const raw = await fs.readFile(path.join(docsDir, "collections", name), "utf8");
+    const raw = readFileSync(path.join(docsDir, "collections", name), "utf8");
     const { frontmatter } = extractFrontmatter(raw);
     if (!frontmatter?.title) continue;
     collections.push({
@@ -160,18 +164,18 @@ async function collectCollectionMetas(
   return collections;
 }
 
-/** 扫描 posts/ 每篇文章，提取 PostMeta 并按 date 倒序（供 RSS 与 sitemap 共用）。 */
-async function collectPostMetas(docsDir: string): Promise<PostMeta[]> {
+/** 扫描 posts/ 每篇文章，提取 PostMeta 并按 date 倒序（供侧栏与 RSS/sitemap 共用）。 */
+function collectPostMetas(docsDir: string): PostMeta[] {
   let entries: string[];
   try {
-    entries = await fs.readdir(path.join(docsDir, "posts"));
+    entries = readdirSync(path.join(docsDir, "posts"));
   } catch {
     return [];
   }
   const posts: PostMeta[] = [];
   for (const name of entries) {
     if (!name.endsWith(".md") || name.startsWith(".")) continue;
-    const raw = await fs.readFile(path.join(docsDir, "posts", name), "utf8");
+    const raw = readFileSync(path.join(docsDir, "posts", name), "utf8");
     const { frontmatter } = extractFrontmatter(raw);
     if (!frontmatter?.title || !frontmatter?.date || frontmatter?.draft) continue;
     posts.push({
@@ -189,4 +193,35 @@ async function collectPostMetas(docsDir: string): Promise<PostMeta[]> {
   }
   posts.sort(comparePosts);
   return posts;
+}
+
+/**
+ * 构建合集侧栏：归属合集的文章按合集分组，组头链接合集页，组内按章节序（order 升序）排列。
+ * 键为每篇文章的路径——同合集的文章共享同一份左侧列表，当前篇自动高亮；
+ * 页脚「上一篇/下一篇」也按此顺序在合集内翻页。不归属合集的文章不出侧栏。
+ * 注意：构建期扫描 frontmatter，dev 下后台新建文章需重启 dev server 才进侧栏。
+ */
+function buildCollectionSidebar(docsDir: string): DefaultTheme.SidebarMulti {
+  const posts = collectPostMetas(docsDir);
+  const collections = collectCollectionMetas(docsDir);
+  const sidebar: DefaultTheme.SidebarMulti = {};
+  for (const c of collections) {
+    if (c.draft) continue;
+    const members = posts.filter((p) => p.collection === c.slug).sort(compareCollectionPosts);
+    if (!members.length) continue;
+    const group: DefaultTheme.SidebarItem[] = [
+      {
+        text: c.title,
+        link: `/collections/${encodeURIComponent(c.slug)}`,
+        items: members.map((p, i) => ({
+          text: `${String(i + 1).padStart(2, "0")}. ${p.title}`,
+          link: `/posts/${p.slug}`,
+        })),
+      },
+    ];
+    for (const m of members) {
+      sidebar[`/posts/${m.slug}`] = group;
+    }
+  }
+  return sidebar;
 }

@@ -27,11 +27,11 @@ body {
   padding-top: 0;
 }
 
-/* 首页：突破默认窄容器，给两栏布局足够宽度 */
-.home-page .VPDoc .content-container {
-  max-width: none;
+/* 首页（index.md 的 pageClass）：突破默认窄容器，内容 1080px */
+.home-page .VPDoc .container {
+  max-width: 1160px !important;
 }
-.home-page .VPDoc .content {
-  max-width: 1100px;
+.home-page .VPDoc .content {  
+  max-width: 1080px !important;
   margin: 0 auto;
 }
