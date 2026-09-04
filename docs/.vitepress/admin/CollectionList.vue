@@ -10,7 +10,6 @@ import {
   NInput,
   NSwitch,
   type DataTableColumns,
-  type DataTableRowKey,
 } from 'naive-ui'
 import { useMessage } from 'naive-ui'
 
@@ -34,6 +33,7 @@ export interface CollectionFormValue {
 
 const props = defineProps<{ items: CollectionItem[] }>()
 const emit = defineEmits<{
+  open: [slug: string]
   write: [slug: string]
   remove: [slug: string]
   create: [value: CollectionFormValue]
@@ -41,9 +41,6 @@ const emit = defineEmits<{
 }>()
 
 const message = useMessage()
-
-/** 勾选的行（批量操作预留，本期仅单删） */
-const checkedKeys = ref<DataTableRowKey[]>([])
 
 // ---- 新建 / 编辑弹窗 ----
 const modalOpen = ref(false)
@@ -121,7 +118,6 @@ function removeCover() {
 }
 
 const columns = [
-  { type: 'selection' },
   {
     title: '封面',
     key: 'cover',
@@ -149,7 +145,18 @@ const columns = [
       const badges: ReturnType<typeof h>[] = []
       if (row.draft)
         badges.push(h(NTag, { size: 'small', bordered: false }, { default: () => '草稿' }))
-      return h('div', { style: 'display:flex;align-items:center;gap:8px;' }, [row.title, ...badges])
+      // 标题可点击 → 进入合集文章列表（排序）
+      return h('div', { style: 'display:flex;align-items:center;gap:8px;' }, [
+        h(
+          'a',
+          {
+            style: 'cursor:pointer;color:inherit;',
+            onClick: () => emit('open', row.slug),
+          },
+          row.title,
+        ),
+        ...badges,
+      ])
     },
   },
   {
@@ -165,9 +172,14 @@ const columns = [
   {
     title: '操作',
     key: 'actions',
-    width: 220,
+    width: 300,
     render(row: CollectionItem) {
       return h('div', { style: 'display:inline-flex;gap:8px;' }, [
+        h(
+          NButton,
+          { size: 'small', onClick: () => emit('open', row.slug) },
+          { default: () => '文章列表' },
+        ),
         h(
           NButton,
           { size: 'small', type: 'primary', onClick: () => emit('write', row.slug) },
@@ -199,8 +211,6 @@ const columns = [
       :columns="columns"
       :data="items"
       :row-key="(row: CollectionItem) => row.slug"
-      :checked-row-keys="checkedKeys"
-      @update:checked-row-keys="(keys: DataTableRowKey[]) => (checkedKeys = keys)"
       :bordered="false"
       :striped="true"
       size="small"

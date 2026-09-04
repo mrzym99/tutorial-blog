@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { NButton, NModal, NForm, NFormItem, NInput, NDatePicker, NSwitch, NSelect, NDivider } from 'naive-ui'
+import { NButton, NModal, NForm, NFormItem, NInput, NDatePicker, NSwitch, NSelect, NTag, NDivider } from 'naive-ui'
 import { useMessage, useDialog } from 'naive-ui'
 import PostEditor from './PostEditor.vue'
 import { DRAFT_KEY, type Draft, type DraftFrontmatter } from './draft'
 
 /**
  * 沉浸式编辑器：编辑区占满，元数据通过弹窗修改。
- * 由 AdminApp 先把当前草稿写入 sessionStorage 后跳转到本页；
+ * 由 AdminApp 先把当前草稿写入 sessionStorage，再在新标签页打开本页；
  * 这里读取草稿、编辑、保存，并把最新状态回写 sessionStorage。
  */
 const message = useMessage()
@@ -34,6 +34,7 @@ const saving = ref(false)
 // ---- 文章设置弹窗 ----
 const settingsOpen = ref(false)
 const settingsDraft = ref<Draft | null>(null)
+const newTag = ref('')
 
 // ---- 封面上传（复用正文图片的 /api/admin/upload） ----
 const coverUploading = ref(false)
@@ -78,6 +79,7 @@ function openSettings() {
   if (!draft.value) return
   // 深拷贝一份，点取消可以回滚
   settingsDraft.value = JSON.parse(JSON.stringify(draft.value))
+  newTag.value = ''
   settingsOpen.value = true
 }
 
@@ -95,9 +97,38 @@ function applySettings() {
   message.success('已更新文章设置')
 }
 
+// 标签管理（设置弹窗内）
+function addTag(t: string) {
+  if (!settingsDraft.value) return
+  const name = t.trim()
+  if (!name) return
+  const cur = settingsDraft.value.frontmatter.tags
+  if (cur.includes(name)) return
+  settingsDraft.value.frontmatter.tags = [...cur, name]
+  newTag.value = ''
+}
+function removeTag(t: string) {
+  if (!settingsDraft.value) return
+  settingsDraft.value.frontmatter.tags = settingsDraft.value.frontmatter.tags.filter(
+    (x) => x !== t,
+  )
+}
+
 // 合集选择（设置弹窗内）：文章必须归属一个合集
 const collectionSelectOptions = computed(() =>
   collectionOptions.value.map((c) => ({ label: c.title, value: c.slug })),
+)
+
+// 全站已有标签，用于快捷点选追加
+const allTags = computed<string[]>(() => {
+  const set = new Set<string>()
+  for (const it of list.value) for (const t of it.tags ?? []) set.add(t)
+  return [...set].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+})
+
+// 推荐标签（设置弹窗里的"已有"列表 = 全站标签 - 已选）
+const suggestedTags = computed(() =>
+  allTags.value.filter((t) => !(settingsDraft.value?.frontmatter.tags ?? []).includes(t)),
 )
 
 /** 当前序号展示（order 由服务端保存时分配，新文章保存前未知） */
@@ -258,7 +289,12 @@ function doLeave() {
   if (selectedSlug.value) {
     sessionStorage.setItem('admin-selected', selectedSlug.value)
   }
-  location.href = '/admin'
+  // 编辑器在新标签页打开（window.open）：脚本有权限直接关闭当前 tab。
+  // 若页面不是脚本打开的（如直接输入地址），window.close() 无效，退回后台列表兜底。
+  window.close()
+  setTimeout(() => {
+    location.href = '/admin'
+  }, 300)
 }
 
 // 当前文章标题（用于顶栏显示）
@@ -272,7 +308,7 @@ const displayTitle = computed(() => {
   <div class="editor-view">
     <header class="topbar">
       <div class="left">
-        <n-button quaternary size="small" @click="back">← 返回</n-button>
+        <n-button quaternary size="small" @click="back">✕ 离开</n-button>
         <span class="title">{{ displayTitle }}</span>
         <span v-if="dirty" class="dirty">● 未保存</span>
       </div>
@@ -383,6 +419,43 @@ const displayTitle = computed(() => {
                 "
               />
               <span class="order-hint">{{ orderLabel }}</span>
+            </div>
+          </div>
+
+          <div class="tags-block">
+            <div class="tags-label">标签</div>
+            <div class="chips">
+              <n-tag
+                v-for="t in settingsDraft.frontmatter.tags"
+                :key="t"
+                size="small"
+                closable
+                type="primary"
+                :bordered="false"
+                @close="removeTag(t)"
+              >
+                {{ t }}
+              </n-tag>
+              <n-input
+                v-model:value="newTag"
+                class="tag-input"
+                size="small"
+                placeholder="回车添加"
+                @keydown.enter.prevent="addTag(newTag)"
+              />
+            </div>
+            <div v-if="suggestedTags.length" class="quick">
+              <span class="quick-label">已有：</span>
+              <n-button
+                v-for="t in suggestedTags"
+                :key="t"
+                size="tiny"
+                quaternary
+                type="primary"
+                @click="addTag(t)"
+              >
+                + {{ t }}
+              </n-button>
             </div>
           </div>
 
@@ -546,6 +619,35 @@ const displayTitle = computed(() => {
   font-size: 0.8rem;
   color: var(--vp-c-text-3);
   white-space: nowrap;
+}
+.tags-block {
+  margin-top: 0.75rem;
+}
+.tags-label {
+  font-size: 0.82rem;
+  color: var(--vp-c-text-3);
+  margin-bottom: 0.35rem;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.tag-input {
+  flex: 1;
+  min-width: 8rem;
+}
+.quick {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+}
+.quick-label {
+  font-size: 0.75rem;
+  color: var(--vp-c-text-3);
 }
 .switches {
   display: flex;

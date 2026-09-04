@@ -106,15 +106,23 @@ export class CollectionsStore {
     return { slug, path: this.collectionPath(slug) }
   }
 
-  /** 保存合集元数据（整体覆盖 frontmatter）。 */
+  /**
+   * 保存合集元数据（整体覆盖 frontmatter）。
+   * createdAt 不在编辑表单里，未携带时保留原值，避免编辑保存后创建日期丢失。
+   */
   async save(
     slug: string,
     frontmatter: CollectionFrontmatter,
   ): Promise<{ slug: string; path: string }> {
     const checked = this.assertValidSlug(slug)
     await this.ensureBase()
+    let fm = frontmatter
+    if (!fm.createdAt) {
+      const existing = await this.get(checked)
+      if (existing?.createdAt) fm = { ...fm, createdAt: existing.createdAt }
+    }
     const tmp = path.join(this.collectionsDir, `.${checked}${TMP_SUFFIX}`)
-    await fs.writeFile(tmp, buildMarkdown(frontmatter, ''), 'utf8')
+    await fs.writeFile(tmp, buildMarkdown(fm, ''), 'utf8')
     await fs.rename(tmp, this.collectionPath(checked))
     return { slug: checked, path: this.collectionPath(checked) }
   }

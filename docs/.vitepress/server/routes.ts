@@ -10,6 +10,7 @@ import {
   NotFoundError,
   ConflictError,
   type PostMeta,
+  type PostRecord,
 } from './posts-store'
 import type { CollectionsStore } from './collections-store'
 import type { UploadFile, UploadResult } from './upload-cos'
@@ -35,6 +36,7 @@ export type AdminRoute =
   | { type: 'collection-get'; slug: string }
   | { type: 'collection-save'; slug: string }
   | { type: 'collection-remove'; slug: string }
+  | { type: 'collection-order'; slug: string }
   | { type: 'notfound' }
 
 /** 纯函数：把 URL 路径 + HTTP 方法解析为路由，方便单测。 */
@@ -71,6 +73,10 @@ export function parseAdminRoute(urlPath: string, method = 'GET'): AdminRoute {
     if (up === 'PUT') return { type: 'collection-save', slug }
     if (up === 'DELETE') return { type: 'collection-remove', slug }
     return { type: 'collection-get', slug }
+  }
+  // 合集文章排序：/collections/:slug/order（PUT，body 为完整有序 slug 列表）
+  if (parts.length === 3 && parts[0] === 'collections' && parts[2] === 'order') {
+    return { type: 'collection-order', slug: parts[1] }
   }
   return { type: 'notfound' }
 }
@@ -127,6 +133,9 @@ export async function handleAdminRequest(
       case 'collection-remove':
         if (method !== 'DELETE') return methodNotAllowed(res)
         return await handleCollectionRemove(res, route.slug, ctx)
+      case 'collection-order':
+        if (method !== 'PUT') return methodNotAllowed(res)
+        return await handleCollectionOrder(res, route.slug, req, ctx)
       default:
         return notFound(res)
     }
@@ -330,6 +339,60 @@ async function handleCollectionRemove(
   await ctx.collections.remove(slugCheck.slug)
   res.statusCode = 204
   res.end()
+}
+
+/**
+ * 合集文章排序：body 为 { slugs: string[] }（该合集文章的完整有序 slug 列表）。
+ * 按数组下标把每篇文章 order 重写为 1、2、3…；仅接受该合集实际归属的文章。
+ */
+async function handleCollectionOrder(
+  res: ServerResponse,
+  slug: string,
+  req: IncomingMessage,
+  ctx: AdminContext,
+): Promise<void> {
+  const slugCheck = validateSlug(slug)
+  if (!slugCheck.ok) return badRequest(res, slugCheck.error)
+
+  let parsed: any
+  try {
+    parsed = JSON.parse((await readBody(req)).toString('utf8'))
+  } catch {
+    return badRequest(res, '请求体不是合法 JSON')
+  }
+  const slugs: unknown = parsed?.slugs
+  if (!Array.isArray(slugs) || slugs.some((s) => typeof s !== 'string'))
+    return badRequest(res, 'slugs 必须为字符串数组')
+
+  const target = await ctx.collections.get(slugCheck.slug)
+  if (!target) return notFound(res)
+
+  // 先整体校验再落盘，避免半套文章改了 order、另一半报错的中间态
+  const records: PostRecord[] = []
+  for (const s of slugs as string[]) {
+    const rec = await ctx.store.get(s)
+    if (!rec || rec.collection !== slugCheck.slug) {
+      return badRequest(res, `文章「${s}」不存在或不属于合集「${slugCheck.slug}」`)
+    }
+    records.push(rec)
+  }
+
+  // 顺序写，避免并发写不同文件时的竞争；order 从 1 起连续编号
+  for (let i = 0; i < records.length; i++) {
+    const rec = records[i]
+    await ctx.store.save(rec.slug, {
+      title: rec.title,
+      date: rec.date,
+      tags: rec.tags,
+      excerpt: rec.excerpt,
+      cover: rec.cover,
+      draft: rec.draft,
+      pinned: rec.pinned,
+      collection: rec.collection,
+      order: i + 1,
+    }, rec.body)
+  }
+  json(res, 200, { slug: slugCheck.slug, count: records.length })
 }
 
 async function handleUpload(

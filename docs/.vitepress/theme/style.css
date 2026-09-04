@@ -27,6 +27,12 @@ body {
   padding-top: 0;
 }
 
+/* 去掉标题默认的顶部分割线 */
+.vp-doc h2 {
+  border-top: none;
+  padding-top: 0;
+}
+
 /* 首页（index.md 的 pageClass）：突破默认窄容器，内容 1080px */
 .home-page .VPDoc .container {
   max-width: 1160px !important;

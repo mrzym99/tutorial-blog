@@ -5,21 +5,28 @@ import { useMessage, useDialog } from 'naive-ui'
 import PostList, { type ListItem } from './PostList.vue'
 import TrashList, { type TrashItem } from './TrashList.vue'
 import CollectionList, { type CollectionItem, type CollectionFormValue } from './CollectionList.vue'
+import CollectionDetail, { type CollectionPostItem } from './CollectionDetail.vue'
 import { newSlug } from '../lib/slug'
 import { DRAFT_KEY, todayStr, type Draft } from './draft'
 
-type View = 'collections' | 'posts' | 'trash'
+type View = 'collections' | 'collection-detail' | 'posts' | 'trash'
+
+/** 列表行带合集内序号（排序视图用） */
+type PostItem = ListItem & { order?: number }
 
 const message = useMessage()
 const dialog = useDialog()
 
-const list = ref<ListItem[]>([])
+const list = ref<PostItem[]>([])
 const trash = ref<TrashItem[]>([])
 const collections = ref<CollectionItem[]>([])
 const view = ref<View>('collections') // 「先有合集才有文章」：默认落在合集 tab
+// 当前查看的合集 slug（collection-detail 视图）
+const currentCollection = ref('')
+const reorderSaving = ref(false)
 
 async function loadList() {
-  list.value = await api<ListItem[]>('/api/admin/posts')
+  list.value = await api<PostItem[]>('/api/admin/posts')
 }
 
 async function loadTrash() {
@@ -70,10 +77,10 @@ onMounted(() => {
 })
 onBeforeUnmount(() => window.removeEventListener('focus', reloadAll))
 
-/** 把草稿写入 sessionStorage 并在当前标签跳转到全屏编辑器页。 */
+/** 把草稿写入 sessionStorage 并在新标签页打开全屏编辑器（sessionStorage 会随 window.open 带过去）。 */
 function openEditor(draft: Draft) {
   sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
-  location.href = '/admin-edit'
+  window.open('/admin-edit', '_blank')
 }
 
 async function selectPost(slug: string) {
@@ -134,6 +141,49 @@ function newPostDefaultCollection() {
     return
   }
   newPost(collections.value[0].slug)
+}
+
+// ---- 合集文章列表 / 排序 ----
+
+function openCollection(slug: string) {
+  currentCollection.value = slug
+  view.value = 'collection-detail'
+}
+
+const currentCollectionMeta = computed(() =>
+  collections.value.find((c) => c.slug === currentCollection.value),
+)
+
+const collectionPosts = computed<CollectionPostItem[]>(() =>
+  list.value
+    .filter((p) => p.collection === currentCollection.value)
+    .map((p) => ({ slug: p.slug, title: p.title, date: p.date, draft: p.draft, order: p.order })),
+)
+
+/** 上移/下移后保存新的顺序；失败时重新拉取列表回滚展示 */
+async function reorderPosts(slugs: string[]) {
+  if (reorderSaving.value) return
+  reorderSaving.value = true
+  try {
+    const res = await fetch(
+      `/api/admin/collections/${encodeURIComponent(currentCollection.value)}/order`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slugs }),
+      },
+    )
+    if (res.ok) {
+      await loadList()
+      message.success('排序已保存')
+    } else {
+      const data = await res.json().catch(() => ({}))
+      message.error((data as { error?: string }).error || '排序保存失败')
+      await loadList()
+    }
+  } finally {
+    reorderSaving.value = false
+  }
 }
 
 // ---- 合集 CRUD ----
@@ -356,10 +406,22 @@ async function api<T>(path: string): Promise<T> {
       <CollectionList
         v-if="view === 'collections'"
         :items="collections"
+        @open="openCollection"
         @write="newPost"
         @remove="removeCollection"
         @create="createCollection"
         @save="saveCollection"
+      />
+      <CollectionDetail
+        v-else-if="view === 'collection-detail' && currentCollectionMeta"
+        :title="currentCollectionMeta.title"
+        :description="currentCollectionMeta.description"
+        :posts="collectionPosts"
+        :saving="reorderSaving"
+        @back="view = 'collections'"
+        @edit="selectPost"
+        @remove="removePost"
+        @reorder="reorderPosts"
       />
       <PostList
         v-else-if="view === 'posts'"

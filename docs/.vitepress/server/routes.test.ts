@@ -56,6 +56,10 @@ describe('parseAdminRoute', () => {
       type: 'collection-remove',
       slug: 'c1',
     })
+    expect(parseAdminRoute('/api/admin/collections/c1/order', 'PUT')).toEqual({
+      type: 'collection-order',
+      slug: 'c1',
+    })
   })
 })
 // ---------- handleAdminRequest 集成（真实 store + mock req/res） ----------
@@ -178,5 +182,72 @@ describe('handleAdminRequest：合集删除约束', () => {
     expect(res.statusCode).toBe(200)
     expect(typeof res.json.slug).toBe('string')
     expect(res.json.slug.length).toBeGreaterThan(0)
+  })
+})
+
+describe('handleAdminRequest：合集文章排序', () => {
+  async function setupCollectionWithPosts() {
+    await collections.create({ title: 'C' } as any)
+    const slug = (await collections.list())[0].slug
+    for (const name of ['p1', 'p2', 'p3']) {
+      await request(`/api/admin/posts/${name}`, 'PUT', {
+        frontmatter: { title: name, date: '2026-08-27', collection: slug },
+        body: `正文-${name}`,
+      })
+    }
+    return slug
+  }
+
+  it('按 slug 列表顺序重写 order（1、2、3），正文保持不变', async () => {
+    const c = await setupCollectionWithPosts()
+
+    const res = await request(`/api/admin/collections/${c}/order`, 'PUT', {
+      slugs: ['p3', 'p1', 'p2'],
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json).toEqual({ slug: c, count: 3 })
+
+    expect((await store.get('p3'))?.order).toBe(1)
+    expect((await store.get('p1'))?.order).toBe(2)
+    expect((await store.get('p2'))?.order).toBe(3)
+    expect((await store.get('p3'))?.body).toBe('正文-p3')
+    expect((await store.get('p3'))?.title).toBe('p3')
+  })
+
+  it('列表含不属于该合集的文章 → 400，且不改动任何 order', async () => {
+    const c = await setupCollectionWithPosts()
+    await collections.create({ title: '其他' } as any)
+    const other = (await collections.list())[0].slug === c
+      ? (await collections.list())[1].slug
+      : (await collections.list())[0].slug
+    await request(`/api/admin/posts/px`, 'PUT', {
+      frontmatter: { title: 'px', date: '2026-08-27', collection: other },
+      body: '正文',
+    })
+
+    const res = await request(`/api/admin/collections/${c}/order`, 'PUT', {
+      slugs: ['p1', 'px'],
+    })
+    expect(res.statusCode).toBe(400)
+    expect((await store.get('p1'))?.order).toBe(1)
+  })
+
+  it('文章不存在 → 400；合集不存在 → 404；slugs 类型非法 → 400', async () => {
+    const c = await setupCollectionWithPosts()
+
+    const missing = await request(`/api/admin/collections/${c}/order`, 'PUT', {
+      slugs: ['p1', 'ghost'],
+    })
+    expect(missing.statusCode).toBe(400)
+
+    const noCollection = await request('/api/admin/collections/ghost/order', 'PUT', {
+      slugs: [],
+    })
+    expect(noCollection.statusCode).toBe(404)
+
+    const badBody = await request(`/api/admin/collections/${c}/order`, 'PUT', {
+      slugs: 'p1',
+    })
+    expect(badBody.statusCode).toBe(400)
   })
 })

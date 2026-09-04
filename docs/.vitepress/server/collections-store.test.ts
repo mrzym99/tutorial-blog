@@ -73,6 +73,20 @@ describe('get / save', () => {
     expect(rec?.description).toBe('新简介')
   })
 
+  it('save 未携带 createdAt 时保留原值（编辑表单不维护创建日期）', async () => {
+    const { slug } = await store.create(fm({ title: '旧', createdAt: '2026-01-01' }))
+    await store.save(slug, fm({ title: '改名', description: '新简介' }))
+    const rec = await store.get(slug)
+    expect(rec?.createdAt).toBe('2026-01-01')
+    expect(rec?.title).toBe('改名')
+  })
+
+  it('save 显式携带 createdAt 时覆盖', async () => {
+    const { slug } = await store.create(fm({ title: '旧', createdAt: '2026-01-01' }))
+    await store.save(slug, fm({ title: '新', createdAt: '2026-02-02' }))
+    expect((await store.get(slug))?.createdAt).toBe('2026-02-02')
+  })
+
   it('原子写：无 .tmp 残留', async () => {
     const { slug } = await store.create(fm({ title: '原子' }))
     await store.save(slug, fm({ title: '原子2' }))

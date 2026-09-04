@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount } from 'vue'
+import { onMounted, onBeforeUnmount, watch } from 'vue'
+import { useData } from 'vitepress'
 import { GISCUS } from '../giscus'
+
+const { page } = useData()
 
 const CONTAINER_ID = 'giscus-comments'
 
@@ -52,9 +55,24 @@ function getPreferredTheme(): string {
 
 let cleanup: (() => void) | null = null
 onMounted(mount)
+// Layout 实例在 SPA 切换文章时被复用，onMounted 不会重触发；
+// 监听页面路径变化，重新挂载以加载对应文章的评论
+watch(
+  () => page.value.relativePath,
+  (path, oldPath) => {
+    if (path && path !== oldPath) mount()
+  },
+)
 onBeforeUnmount(() => cleanup?.())
 </script>
 
 <template>
   <div :id="CONTAINER_ID" class="giscus-comments" />
 </template>
+
+<style scoped>
+/* 与文章正文拉开间距 */
+.giscus-comments {
+  margin-top: 4rem;
+}
+</style>
