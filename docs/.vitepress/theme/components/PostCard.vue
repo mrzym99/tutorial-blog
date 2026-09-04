@@ -116,10 +116,10 @@ function tagHref(tag: string): string {
   padding: 1.25rem 1.5rem;
 }
 
-/* compact 档：缩略图更小，适合标签列表等轻量场景 */
+/* compact 档：缩略图适中，适合合集/标签列表等轻量场景 */
 .post-card--compact .card-media {
-  width: 140px;
-  min-height: 96px;
+  width: 200px;
+  min-height: 128px;
 }
 .post-card--compact .title-text {
   font-size: 1.05rem;

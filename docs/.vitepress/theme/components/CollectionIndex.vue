@@ -85,6 +85,7 @@ function collectionHref(slug: string): string {
   font-weight: 700;
   color: var(--vp-c-text-1);
   transition: color 0.2s;
+  border: none; 
 }
 .collection-card:hover .title {
   color: var(--vp-c-brand-1);

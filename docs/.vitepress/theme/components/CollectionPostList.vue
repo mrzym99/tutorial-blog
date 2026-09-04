@@ -51,6 +51,8 @@ function ordinal(index: number): string {
           :title="p.title"
           :href="postHref(p.slug)"
           :date="p.date"
+          :tags="p.tags"
+          :excerpt="p.excerpt"
           :cover="p.cover"
           size="compact"
         />
