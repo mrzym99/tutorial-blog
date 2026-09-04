@@ -10,6 +10,7 @@ import CollectionIndex from './components/CollectionIndex.vue'
 import CollectionPostList from './components/CollectionPostList.vue'
 import GiscusComment from './components/GiscusComment.vue'
 import AdminPlaceholder from '../admin/AdminPlaceholder.vue'
+// @ts-ignore CSS 文件无类型声明（side-effect import）
 import './style.css'
 
 export default {

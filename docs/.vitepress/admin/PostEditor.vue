@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { MdEditor } from 'md-editor-v3'
+// @ts-ignore CSS 文件无类型声明（side-effect import）
 import 'md-editor-v3/lib/style.css'
 import { useNaiveTheme } from './theme'
 
@@ -82,5 +83,9 @@ async function onUploadImg(files: File[], callback: (urls: string[]) => void) {
   place-items: center;
   color: var(--vp-c-text-3);
   font-size: 0.9rem;
+}
+
+:deep(.md-editor-code-head) {
+  z-index: 2000 !important;
 }
 </style>
