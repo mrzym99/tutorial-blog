@@ -117,8 +117,10 @@ export default defineConfig({
       adminPlugin({
         postsDir,
         uploader: buildUploader(),
-        // 后台写入影响侧栏的数据后 touch 本文件 → VitePress 自动重启重建侧栏
+        // 后台写入影响侧栏的数据后：优先走 siteData HMR 原地更新侧栏（页面不刷新），
+        // HMR 不可用时 touch 本文件触发重启兜底
         configFile: fileURLToPath(new URL("./config.mts", import.meta.url)),
+        buildSidebar: () => buildCollectionSidebar(docsDir),
       }),
     ],
   },
