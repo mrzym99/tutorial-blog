@@ -57,6 +57,11 @@ const giscusConfig: GiscusConfig | null = (() => {
   return config.repo && config.repoId && config.categoryId ? config : null;
 })();
 
+// 站点扩展信息：ICP 备案号（页脚展示并链接工信部）与 Cloudflare Web Analytics
+// 的 beacon token（访问统计）。均为可选，缺失时对应功能不启用。
+const siteIcp = pickEnv("SITE_ICP");
+const cfBeaconToken = pickEnv("CF_BEACON_TOKEN");
+
 // COS 上传配置：仅 dev 中间件使用，不进入浏览器包；缺失时上传接口 503。
 function loadCosConfig(): Partial<CosConfig> | null {
   const secretId = pickEnv("COS_SECRET_ID");
@@ -88,15 +93,32 @@ export default defineConfig({
   cleanUrls: true,
   ignoreDeadLinks: true,
 
+  // Cloudflare Web Analytics：token 配置了才注入统计脚本（SPA 切页由 beacon 自动跟进）
+  head: cfBeaconToken
+    ? [
+        [
+          "script",
+          {
+            defer: "",
+            src: "https://static.cloudflareinsights.com/beacon.min.js",
+            "data-cf-beacon": JSON.stringify({ token: cfBeaconToken }),
+          },
+        ],
+      ]
+    : [],
+
   vite: {
-    // 注入 Giscus 评论配置（值公开无密钥）；未配置时为 null，组件跳过挂载
+    // 注入 Giscus 评论配置与站点元信息（值公开无密钥）；未配置时为 null/空串，组件跳过渲染
     define: {
       __GISCUS__: JSON.stringify(giscusConfig),
+      __SITE_ICP__: JSON.stringify(siteIcp),
     },
     plugins: [
       adminPlugin({
         postsDir,
         uploader: buildUploader(),
+        // 后台写入影响侧栏的数据后 touch 本文件 → VitePress 自动重启重建侧栏
+        configFile: fileURLToPath(new URL("./config.mts", import.meta.url)),
       }),
     ],
   },

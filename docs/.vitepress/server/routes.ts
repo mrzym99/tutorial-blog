@@ -86,6 +86,11 @@ export interface AdminContext {
   collections: CollectionsStore
   /** COS 上传器；未配置为 null（此时上传接口返回 503） */
   uploader?: Uploader | null
+  /**
+   * 通知侧栏数据已变化（touch 配置文件 → VitePress 自动重启并重建侧栏）。
+   * 侧栏由 config.mts 构建期扫描 frontmatter 生成，写入后不重算会一直是旧数据。
+   */
+  onSidebarChange?: () => void
 }
 
 export async function handleAdminRequest(
@@ -202,6 +207,14 @@ async function handleSave(
 
     const saved = await ctx.store.save(slug, frontmatter, bodyRaw)
     json(res, 200, saved)
+    // 侧栏展示 title/collection/order/draft，这些字段变了才重启（纯内容编辑不重启）
+    const sidebarChanged =
+      !existing ||
+      existing.title !== frontmatter.title ||
+      existing.collection !== collection ||
+      existing.order !== frontmatter.order ||
+      existing.draft !== frontmatter.draft
+    if (sidebarChanged) ctx.onSidebarChange?.()
   } catch (err) {
     status500(res, err)
   }
@@ -230,6 +243,7 @@ async function handleRemove(
   await ctx.store.remove(slug)
   res.statusCode = 204
   res.end()
+  ctx.onSidebarChange?.()
 }
 
 async function handleTrashList(res: ServerResponse, ctx: AdminContext): Promise<void> {
@@ -247,6 +261,8 @@ async function handleTrashRestore(
   if (!slugCheck.ok) return badRequest(res, slugCheck.error)
   const saved = await ctx.store.restore(slugCheck.slug)
   json(res, 200, saved)
+  // 恢复的文章可能归属合集，回到 posts/ 即可能进侧栏
+  ctx.onSidebarChange?.()
 }
 
 async function handleTrashRemove(
@@ -298,6 +314,7 @@ async function handleCollectionCreate(
   if (fmErr) return badRequest(res, fmErr)
   const created = await ctx.collections.create(fm as CollectionFrontmatter)
   json(res, 200, created)
+  ctx.onSidebarChange?.()
 }
 
 async function handleCollectionSave(
@@ -319,6 +336,8 @@ async function handleCollectionSave(
   if (!slugCheck.ok) return badRequest(res, slugCheck.error)
   const saved = await ctx.collections.save(slugCheck.slug, fm as CollectionFrontmatter)
   json(res, 200, saved)
+  // 合集标题/草稿态展示在侧栏组头上
+  ctx.onSidebarChange?.()
 }
 
 async function handleCollectionRemove(
@@ -339,6 +358,7 @@ async function handleCollectionRemove(
   await ctx.collections.remove(slugCheck.slug)
   res.statusCode = 204
   res.end()
+  ctx.onSidebarChange?.()
 }
 
 /**
@@ -393,6 +413,8 @@ async function handleCollectionOrder(
     }, rec.body)
   }
   json(res, 200, { slug: slugCheck.slug, count: records.length })
+  // 章节序（order）决定侧栏内文章排列
+  ctx.onSidebarChange?.()
 }
 
 async function handleUpload(
