@@ -99,7 +99,7 @@ export default defineConfig({
         [
           "script",
           {
-            defer: "",
+            type: "module",
             src: "https://static.cloudflareinsights.com/beacon.min.js",
             "data-cf-beacon": JSON.stringify({ token: cfBeaconToken }),
           },
@@ -164,9 +164,7 @@ async function generateFeedFiles(siteConfig: { srcDir: string; outDir: string })
 }
 
 /** 扫描 collections/ 每个合集，提取 CollectionMeta（供侧栏与 sitemap 使用，草稿在 sitemap 内过滤）。 */
-function collectCollectionMetas(
-  docsDir: string,
-): { slug: string; title: string; draft?: boolean }[] {
+function collectCollectionMetas(docsDir: string): { slug: string; title: string; draft?: boolean }[] {
   let entries: string[];
   try {
     entries = readdirSync(path.join(docsDir, "collections"));
