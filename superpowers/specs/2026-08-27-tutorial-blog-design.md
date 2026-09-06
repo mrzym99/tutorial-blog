@@ -1,6 +1,7 @@
 # 教程静态博客 — 设计文档（Spec）
 
-日期：2026-08-27
+日期：2026-08-27（初版）
+更新：2026-09-06（随实现同步：合集体系、回收站、COS 图床、合集/文章排序与 FLIP 动画）
 状态：已确认（待用户最终审阅）
 
 ## 1. 目标
@@ -8,34 +9,35 @@
 搭建一个以教程文章为主的静态博客系统，满足：
 
 1. **部署简单**：构建产物为纯静态文件，推送到远端（Cloudflare Pages）即完成部署，无需服务器。
-2. **本地写作**：本地 dev 运行时有独立的写作后台（`/admin`），支持富文本（所见即所得）编辑、实时预览、文章管理、图片上传，写好的文章以归一化 Markdown 文件形式保存在项目文件夹内。
-3. **图床上传**：编辑器内粘贴/拖拽图片自动上传到 SM.MS 图床并插入链接，Token 只存在本地。
+2. **本地写作**：本地 dev 运行时有独立的写作后台（`/admin`），支持 Markdown 编辑、实时预览、文章/合集管理、图片上传，写好的内容以归一化 Markdown 文件形式保存在项目文件夹内。
+3. **图床上传**：编辑器内粘贴/上传图片自动上传到腾讯云 COS 并插入链接，密钥只存在本地。
 4. **速度快**：dev 启动快、热更新快；线上预渲染 HTML + 客户端路由，切页不刷新。
-5. **读者侧功能**：全文搜索、标签分类、RSS 订阅、评论区（Giscus）。
+5. **读者侧功能**：合集（教程系列）、标签分类、归档、RSS、sitemap、评论区（Giscus）。
 
 ## 2. 架构总览
 
 一个 VitePress 应用，两种运行形态：
 
-- **本地 dev**（`vitepress dev`）：静态博客 + `/admin` 写作后台。写作后台通过一个自定义 Vite 插件在 dev server 上注册中间件（`configureServer` 钩子），提供文章文件读写和图片上传代理的本地 API。SM.MS Token 只在 Node 侧从 `.env.local` 读取，**不进浏览器包、不进静态产物**。
+- **本地 dev**（`vitepress dev`）：静态博客 + `/admin` 写作后台。写作后台通过一个自定义 Vite 插件在 dev server 上注册中间件（`configureServer` 钩子），提供文章/合集文件读写和图片上传代理的本地 API。COS 密钥只在 Node 侧从 `.env.local` 读取，**不进浏览器包、不进静态产物**。
 - **线上 build**（`vitepress build`）：纯静态文件输出到 `docs/.vitepress/dist`。`/admin` 页面仍打包，但只渲染一句"写作后台仅在本地开发模式可用"；`/api/admin/*` 在静态托管上自然 404。
 
 关键边界：
 
-- 所有可测逻辑（slug 校验、frontmatter 解析、文件存储、上传代理、标签聚合）都是**纯函数/独立模块**，与 Vue 组件和 HTTP 层分离，用 vitest 单测。
-- 浏览器侧代码（admin 页面）从不接触 Token；上传请求发给本地 dev API，由 Node 侧转发 SM.MS。
-- 线上最终产物一律由 VitePress 自己的 Markdown 渲染器渲染，不引入第二套**发布级**渲染器。（`createMarkdownRenderer` 是 Node-only API，无法在浏览器 admin 内使用；写作后台的实时预览由 tiptap 所见即所得承担，存储的内容是 Markdown，线上渲染不受其影响。）
+- 所有可测逻辑（slug 校验、frontmatter 解析、文件存储、上传、标签/合集聚合）都是**纯函数/独立模块**，与 Vue 组件和 HTTP 层分离，用 vitest 单测。
+- 浏览器侧代码（admin 页面）从不接触密钥；上传请求发给本地 dev API，由 Node 侧转发 COS。
+- 线上最终产物一律由 VitePress 自己的 Markdown 渲染器渲染，不引入第二套**发布级**渲染器。
 
 ## 3. 技术栈
 
 | 项 | 选型 |
 |---|---|
-| 站点框架 | VitePress 1.x（最新稳定版） |
+| 站点框架 | VitePress 1.x |
 | 框架 | Vue 3 + TypeScript |
-| 测试 | vitest（最新稳定版） |
-| 富文本编辑器 | tiptap（ProseMirror 内核；官方 `@tiptap/vue-3` Vue3 绑定 + `@tiptap/markdown` 序列化，MIT 开源；可替换为其它开源方案） |
+| UI 组件 | naive-ui（后台表格/表单/弹窗/轻提示） |
+| 编辑器 | md-editor-v3（Markdown 编辑 + 预览，后台编辑态用） |
+| 测试 | vitest |
 | 包管理 | pnpm |
-| 图床 | SM.MS（`https://sm.ms/api/v2/upload`） |
+| 图床 | 腾讯云 COS（`cos-nodejs-sdk-v5`；SM.MS 已失效，被取代） |
 | 部署 | Cloudflare Pages（Git 连接自动构建；也支持 wrangler 手动推产物） |
 | 评论 | Giscus（GitHub Discussions 驱动，纯静态，无密钥） |
 | 基线 | Node ≥ 20 |
@@ -44,161 +46,172 @@
 
 ```
 tutorial-blog/
-├─ .env.local                  # SMMS_TOKEN=xxx（.gitignore，不提交）
-├─ .env.example                # SMMS_TOKEN= 模板（提交，供参考）
-├─ .gitignore
-├─ package.json                # scripts: dev / build / preview / test
-├─ tsconfig.json
-├─ vitest.config.ts
-├─ superpowers/                # 设计文档与实施计划（不进入 docs/ 源目录，不会被当成站点页面）
-│  ├─ specs/
-│  │  └─ 2026-08-27-tutorial-blog-design.md
-│  └─ plans/
+├─ .env.local                  # COS_* 密钥（.gitignore，不提交）
+├─ package.json                # scripts: dev / build / preview / test / typecheck
+├─ superpowers/                # 设计文档（不进站点源目录，不会被当成页面）
+│  └─ specs/2026-08-27-tutorial-blog-design.md
 └─ docs/
    ├─ .vitepress/
-   │  ├─ config.mts            # VitePress 配置 + dev 插件挂载 + RSS buildEnd 钩子
-   │  ├─ theme/
-   │  │  ├─ index.ts           # 主题入口，注册布局插槽（doc-after 挂评论组件）
-   │  │  └─ components/
-   │  │     ├─ HomePostList.vue    # 首页文章列表
-   │  │     └─ GiscusComment.vue   # 文章底部评论（Giscus）
-   │  ├─ admin/                # 写作后台（仅 dev 有完整功能）
-   │  │  ├─ AdminPage.vue          # DEV 检测；生产显示提示语
-   │  │  ├─ AdminApp.vue           # 三栏布局主界面
-   │  │  ├─ PostListPanel.vue      # 左栏：文章列表 + 新建按钮
-   │  │  ├─ FrontmatterForm.vue    # 顶部：标题/slug/日期/标签/摘要表单
-   │  │  └─ PostEditor.vue         # 中：所见即所得编辑器（tiptap）；右：与线上一致的预览；粘贴/拖拽上传
-   │  ├─ server/               # dev 中间件逻辑（Node 侧，仅 dev 加载）
-   │  │  ├─ plugin.ts              # Vite 插件：configureServer 注册路由
-   │  │  ├─ routes.ts              # HTTP 路由分发（URL 解析 → handler）
-   │  │  ├─ posts-store.ts         # 扫描/读写/删除 posts/ 文件（含 trash、原子写）
-   │  │  └─ upload-smms.ts         # SM.MS 上传代理（fetch 转发 + 错误归一化）
-   │  ├─ lib/                  # 纯函数（全部有单测）
-   │  │  ├─ slug.ts                # slug 生成 + 合法性校验（防路径穿越）
-   │  │  ├─ frontmatter.ts         # YAML frontmatter 解析 / 序列化
-   │  │  └─ tags.ts                # 文章数据 → 标签聚合（供标签页和测试）
-   │  └─ data/
-   │     └─ posts.data.ts          # createContentLoader：构建期文章列表/标签数据
-   ├─ posts/
-   │  ├─ hello-world.md            # 示例文章（随项目创建）
-   │  └─ .trash/                   # 删除文章的回收目录（posts-store 自动创建）
-   ├─ tags/
-   │  ├─ index.md                   # 标签总览页
-   │  └─ [tag].md                   # 动态路由：单个标签的文章列表
-   ├─ index.md                      # 首页（layout: home + 文章列表组件）
-   ├─ about.md                      # 关于页
-   └─ admin.md                      # 站点页面，仅一行：<AdminPage />
+   │  ├─ config.mts           # VitePress 配置 + dev 插件挂载 + 侧栏生成 + RSS/sitemap buildEnd 钩子
+   │  ├─ admin/               # 写作后台（仅 dev 有完整功能）
+   │  │  ├─ AdminPage.vue         # DEV 检测；生产显示提示语
+   │  │  ├─ AdminApp.vue          # 主界面：合集/文章/回收站三个 tab + 全部 API 调用
+   │  │  ├─ AdminEditorPage.vue   # 全屏编辑器页（新标签页打开）
+   │  │  ├─ AdminEditorView.vue   # 编辑器 + frontmatter 表单（标题/标签/摘要/封面/合集/草稿/置顶）
+   │  │  ├─ PostList.vue          # 文章列表（批量删除/恢复）
+   │  │  ├─ CollectionList.vue    # 合集列表（新建/编辑/删除 + 序号排序动画）
+   │  │  ├─ CollectionDetail.vue  # 合集内文章列表（章节序排序动画）
+   │  │  ├─ TrashList.vue         # 回收站（恢复/彻底删除/清空）
+   │  │  ├─ PostEditor.vue        # md-editor-v3 封装（粘贴/选择上传图片）
+   │  │  ├─ flip.ts               # FLIP 行交换动画（纯 DOM，无依赖）
+   │  │  └─ draft.ts              # sessionStorage 草稿传递（列表→编辑器新标签页）
+   │  ├─ server/              # dev 中间件逻辑（Node 侧，仅 dev 加载）
+   │  │  ├─ plugin.ts             # Vite 插件：configureServer 注册路由
+   │  │  ├─ routes.ts             # HTTP 路由分发（URL 解析 → handler，含校验与错误码）
+   │  │  ├─ posts-store.ts        # posts/ 文件读写（含 trash、原子写、order 分配）
+   │  │  ├─ collections-store.ts  # collections/ 文件读写（同构 posts-store）
+   │  │  └─ upload-cos.ts         # 腾讯云 COS 上传（key：uploads/YYYY/MM/<uuid>.<ext>）
+   │  ├─ lib/                 # 纯函数（全部有单测）
+   │  │  ├─ slug.ts               # slug 校验（防路径穿越）+ UUID 生成
+   │  │  ├─ frontmatter.ts        # YAML frontmatter 解析 / 序列化
+   │  │  ├─ tags.ts               # 文章数据 → 标签聚合；全站统一排序 comparePosts
+   │  │  └─ collections.ts        # 合集聚合：合集内文章序 compareCollectionPosts、合集展示序 compareCollections
+   │  ├─ data/                # 构建期数据加载器
+   │  │  ├─ posts.data.ts         # createContentLoader：文章列表
+   │  │  ├─ collections.data.ts   # createContentLoader：合集元数据
+   │  │  ├─ rss.ts                # RSS XML 生成（纯函数）
+   │  │  └─ sitemap.ts            # sitemap XML 生成（纯函数）
+   │  └─ theme/components/    # 读者侧组件（CollectionIndex / CollectionPostList / TagIndex / ArchiveList / HomePostList / GiscusComment / Pagination …）
+   ├─ collections/            # 合集：<uuid>.md + [collection].md 动态路由
+   ├─ posts/                  # 文章：<uuid>.md，删除进 .trash/
+   ├─ tags/ archives/ index.md about.md admin.md admin-edit.md 404.md
 ```
 
 ## 5. 内容模型
 
-每篇文章是一个 Markdown 文件：`docs/posts/<slug>.md`。
+### 文章：`docs/posts/<slug>.md`
 
-Frontmatter 约定：
+slug 由系统生成 **UUID v4**（用户不参与定义），仅含小写十六进制与 `-`，天然满足 slug 校验、防路径穿越。
 
 ```yaml
 ---
-title: 文章标题           # 必填，字符串
-date: 2026-08-27         # 必填，YYYY-MM-DD；新建文章表单默认填当天日期
-tags: [前端, VitePress]  # 可选，字符串数组
-excerpt: 摘要一句话       # 可选，用于文章列表和 RSS
+title: 文章标题           # 必填
+date: 2026-09-05         # 必填，YYYY-MM-DD
+tags: [Claude Code]      # 可选，字符串数组
+excerpt: 摘要一句话       # 可选，列表/RSS 用
+cover: https://…/x.png   # 可选，封面图（首页卡片展示）
+draft: false             # 草稿：true 时公开侧（列表/RSS/sitemap）不展示
+pinned: false            # 置顶：公开列表排在未置顶之前
+collection: <uuid>       # 必填，所属合集（「先有合集才有文章」）
+order: 1                 # 合集内章节序，服务端保存时自动分配（追加到末尾）
 ---
 正文 Markdown……
 ```
 
-约束与规则：
+- 文章统一排序 `comparePosts`：置顶优先 → date 倒序 → slug 稳定序（读者侧全站一致）。
+- 合集内排序 `compareCollectionPosts`：order 升序 → date 倒序兜底 → slug 稳定序。
+- 删除进回收站 `docs/posts/.trash/<slug>-<日期>.md`，可恢复、可彻底删除。
 
-- **slug 规则**：`^[a-z0-9一-龥_-]+$`（小写字母、数字、中文、连字符 `-`、下划线 `_`）。禁止出现 `/ \ . : * ? " < > |` 和空格、`..` 段。所有写盘路径必须先过校验，防止路径穿越（如 `../../x`）。此函数为安全关键，有重点单测。
-- 标题转 slug：英文转小写、空白转 `-`、非法字符剔除；中文字符保留；连续 `-` 合并。表单自动生成，用户可手改。
-- 文章列表按 `date` 倒序（同日按 slug 排序，保证顺序稳定）。
-- 删除文章不直接删文件：移动到 `docs/posts/.trash/<slug>-<删除日期>.md`。
-- 构建期数据加载（`posts.data.ts` 的 `createContentLoader`）扫描 glob 为 `posts/*.md`（**非递归**），确保 `.trash/` 中的文件不会被当成文章。
-- 保存采用**原子写**：先写 `posts/.<slug>.md.tmp` 临时文件，再 `rename` 覆盖目标文件，避免写一半被 dev server 文件监听读到残文件。
+### 合集：`docs/collections/<slug>.md`
+
+```yaml
+---
+title: 合集标题           # 必填
+description: 简介         # 可选，卡片与详情页头部
+cover: https://…/x.png   # 可选，合集封面
+draft: false             # 草稿合集不进首页与动态路由
+createdAt: 2026-09-04    # 创建日期（无 order 时展示顺序兜底）
+order: 2                 # 合集展示序号（排序接口整体重写；未设置按 createdAt 兜底）
+---
+```
+
+- 合集展示排序 `compareCollections`：**order 升序（未设置排最后）→ createdAt 升序兜底 → slug 稳定序**。旧合集无需迁移数据，拖一次排序即写入 order。
+- 合集编辑表单不含 createdAt/order，保存时服务端保留原值，编辑元数据不丢排序。
+- 非空合集拒绝删除（先移出或删除文章）。
+- 侧栏按合集分组：组头链接合集页，组内按章节序编号（01. 02. …），页脚「上一篇/下一篇」在合集内翻页。
 
 ## 6. 本地写作 API（仅 dev）
 
-Vite 插件在 `configureServer(server)` 中注册，前缀 `/api/admin/`。仅 dev server 有；build 产物不含。
+Vite 插件在 `configureServer(server)` 中注册，前缀 `/api/admin/`。
 
-| 方法 | 路径 | 作用 | 响应 |
-|---|---|---|---|
-| GET | `/api/admin/posts` | 文章列表 | `200` → `[{slug, title, date, tags, excerpt}]`，按 date 倒序 |
-| GET | `/api/admin/posts/:slug` | 读单篇 | `200` → `{slug, frontmatter: {title,date,tags,excerpt}, body, raw}`；不存在 `404` |
-| PUT | `/api/admin/posts/:slug` | 新建/保存 | body：`{frontmatter, body}`；成功 `200` → `{slug, path}`；slug 非法 `400`；frontmatter 缺 title/date `400` |
-| DELETE | `/api/admin/posts/:slug` | 删除（移入 trash） | 成功 `204`；不存在 `404` |
-| POST | `/api/admin/upload` | 图片上传 | multipart/form-data，字段 `file`；成功 `200` → `{url}`；Token 未配置 `503` + `{error: "SMMS_TOKEN 未配置，请在项目根 .env.local 中设置"}`；SM.MS 失败 `502` + `{error: "<sm.ms 返回的错误信息>"}` |
+| 方法 | 路径 | 作用 |
+|---|---|---|
+| GET | `/api/admin/posts` | 文章列表（含 draft/pinned/collection/order） |
+| GET/PUT/DELETE | `/api/admin/posts/:slug` | 读单篇 / 新建保存（自动分配 order） / 移入回收站 |
+| GET | `/api/admin/trash` | 回收站列表 |
+| POST | `/api/admin/trash/:slug/restore` | 从回收站恢复 |
+| DELETE | `/api/admin/trash/:slug` | 彻底删除 |
+| GET/POST | `/api/admin/collections` | 合集列表 / 新建（slug 系统生成，createdAt 缺省今天） |
+| GET/PUT/DELETE | `/api/admin/collections/:slug` | 读 / 保存元数据（createdAt/order 未携带时保留原值） / 删除（非空 409） |
+| PUT | `/api/admin/collections/:slug/order` | 合集内文章排序：body `{slugs}`，按列表重写 order 为 1、2、3… |
+| PUT | `/api/admin/collections/order` | **合集列表排序**：body `{slugs}`（全部合集完整顺序），按列表重写每个合集 order 为 1、2、3…；先整体校验后落盘，slug 重复 400 |
+| POST | `/api/admin/upload` | 图片上传（multipart `file`）→ `{url}`；COS 未配置 503，上传失败 502 |
 
-Token 管理：
+错误码约定：slug 非法/frontmatter 校验失败/归属不存在 `400`，资源不存在 `404`，非空合集删除 `409`，方法不匹配 `405`。写 frontmatter 相关接口成功后触发 `onSidebarChange`（touch 配置文件 → VitePress 重启重建侧栏）。
 
-- dev server 启动时用 Vite 的 `loadEnv` 读取项目根 `.env.local` 中的 `SMMS_TOKEN`。
-- `.env.local` 写入 `.gitignore`；仓库只提交 `.env.example`（内容为 `SMMS_TOKEN=`）。
-- Token 只在 Node 中间件内使用，作为 `Authorization: <token>` 头转发给 `https://sm.ms/api/v2/upload`；任何响应都不回传 Token。
+密钥管理：COS SecretId/SecretKey/Bucket/Region/Domain 只从 `.env.local` 读取（Node 侧）；`.env.local` 进 `.gitignore`；任何响应不回传密钥。
 
 ## 7. 写作后台（/admin）
 
-`docs/admin.md` 内容仅为挂载 `<AdminPage />`。
+`docs/admin.md` 挂载 `<AdminPage />`；`admin-edit.md` 挂载全屏编辑器页。
 
-- **AdminPage.vue**：检测 `import.meta.env.DEV`。生产构建下渲染提示卡片："写作后台仅在本地开发模式可用。运行 `pnpm dev` 后访问 /admin。"dev 下挂载 AdminApp。
-- **AdminApp.vue**：三栏布局。
-  - 左栏 PostListPanel：调用 `GET /api/admin/posts` 展示文章列表（标题 + 日期），顶部"新建文章"按钮；点击打开文章；当前选中高亮。
-  - 顶部 FrontmatterForm：标题、slug（标题输入时自动生成，可编辑）、日期（默认今天）、标签（逗号分隔输入）、摘要。
-  - 中栏 PostEditor：集成 tiptap 富文本编辑器（所见即所得）。编辑内容实时经 `editor.getMarkdown()`（`@tiptap/markdown`）导出为 Markdown；Ctrl+S 触发保存（PUT）；保存成功/失败有轻提示。tiptap 本身即所见即所得，**充当实时预览**：不设独立的右侧预览盘，避免在浏览器 admin 引入第二套 Markdown 渲染器。
-- **图片上传**：PostEditor 监听编辑器 `paste` 事件（`clipboardData.items` 取图片）和拖拽 `drop` 事件（`dataTransfer.files`）。拿到图片文件 → `POST /api/admin/upload`（FormData）→ 成功后在光标处插入图片节点（经 tiptap 的 image 节点命令 `setImage({ src })` 插入，落盘表现为 `![alt](url)`）；上传中显示"上传中"状态条并禁用保存；失败弹错误提示。（具体命令/节点写法随 tiptap 版本在实施时定，不影响存储与渲染端。）
-- **编辑器接入（可替换）**：tiptap 经官方 `@tiptap/vue-3`（`useEditor` + `<EditorContent>`）挂载；Markdown 支持由官方 `@tiptap/markdown` 提供——`contentType: 'markdown'` 使初始 content 按 Markdown 解析，`editor.getMarkdown()` 导出归一化 Markdown 提交 PUT。基础能力由 `@tiptap/starter-kit`（标题/列表/引用/代码块/图片等）提供。**编辑器只用做一个可替换的适配层**：改其它开源富文本 Markdown 编辑器时，只需重写 `PostEditor.vue` 的"编辑↔Markdown"封装，存储格式、`/api/admin`、渲染端均不受影响。（`@tiptap/markdown` 序列化对常规博客结构保真完整；仅极复杂嵌套结构可能丢少数字面细节，本项目内容模型无此需求。）
-- 新建文章流程：点"新建"→ 表单填标题（slug 自动生成）→ 编辑正文 → Ctrl+S 首次保存即创建文件。
+- **AdminPage.vue**：检测 `import.meta.env.DEV`，生产构建渲染提示卡片。
+- **AdminApp.vue**：顶栏 + 三个 tab（「先有合集才有文章」，默认落在合集 tab）：
+  - **合集 tab**：`CollectionList` 表格（序号/封面/标题/简介/文章数/创建日期/操作）。新建/编辑走弹窗表单（标题/简介/封面上传/草稿开关）。↑↓ 上移下移排序 → 乐观更新 + FLIP 动画 + `PUT /api/admin/collections/order`。
+  - **合集详情**：`CollectionDetail` 合集内文章列表，↑↓ 调整章节序（同样乐观更新 + FLIP 动画）→ `PUT /api/admin/collections/:slug/order`。
+  - **文章 tab**：`PostList` 全部文章（跨合集），支持批量删除。
+  - **回收站 tab**：`TrashList` 恢复/彻底删除/批量/清空。
+- **编辑器**（`AdminEditorPage` + `AdminEditorView` + `PostEditor`）：列表点「编辑」把草稿写 sessionStorage 后 `window.open('/admin-edit')` 新标签页打开；md-editor-v3 编辑 + 预览；frontmatter 表单含标题/标签/摘要/封面/合集/草稿/置顶，展示「第 N 篇」序号提示；图片粘贴/选择后经 `/api/admin/upload` 上传插入。
+- **排序动画**：`flip.ts` 在本地交换数据前后测量行位置施加反向位移过渡回 0（220ms ease）；行经 `row-props` 注入 `data-slug` 定位；尊重系统 prefers-reduced-motion。保存失败由父组件重拉列表回滚。
 
 ## 8. 读者侧功能
 
-- **首页** `docs/index.md`：`layout: home` + HomePostList 组件，展示文章卡片列表（标题、日期、标签、摘要），数据来自 `posts.data.ts`。
-- **文章页**：VitePress 默认文档布局；`doc-after` 插槽挂 GiscusComment。
-- **搜索**：config 中启用 `themeConfig.search.provider: 'local'`（localSearch，构建期本地索引，零后端）。
-- **标签**：
-  - `docs/tags/index.md`：标签总览（标签 + 文章数），数据来自 `posts.data.ts` + `lib/tags.ts` 聚合。
-  - `docs/tags/[tag].md`：VitePress dynamic routes，`paths` 由标签聚合生成，每页列出该标签下的文章。
-- **RSS**：config.mts 的 VitePress `buildEnd` 钩子中（构建结束后触发），用 `posts.data.ts` 的数据生成 `rss.xml` 写入构建输出目录 outDir（约 30 行，手写 XML，含 title/link/description/item(title/link/pubDate/description=excerpt)）。站点信息（标题、URL）在 config 顶部常量定义。
-- **评论**：GiscusComment.vue 封装 Giscus 官方嵌入方式（`<script src="https://giscus.app/client.js">` 配置）。仓库名、repo-id、category 等配置项在 config 顶部常量集中定义，注释说明如何在 giscus.app 获取。
+- **首页**：文章卡片（置顶/封面/标签/摘要）+ 合集网格（`CollectionIndex`，按合集展示序）。
+- **合集页**：`collections/[collection].md` 动态路由，详情页按章节序列出文章（`CollectionPostList`）。
+- **文章页**：VitePress 默认布局 + 合集侧栏导航（`CollectionNav`）+ `doc-after` 挂 Giscus 评论。
+- **标签**：`tags/index.md` 总览 + `[tag].md` 动态路由。
+- **归档**：`archives.md` 按年份分组（`ArchiveList`）。
+- **RSS**：`buildEnd` 钩子生成 `rss.xml`（`data/rss.ts` 纯函数）。
+- **sitemap**：同钩子生成 `sitemap.xml`（`data/sitemap.ts`），含静态页/合集/标签/文章；草稿与草稿合集剔除，合集顺序与前台一致。
+- **搜索**：VitePress localSearch。
 
 ## 9. 部署（Cloudflare Pages）
 
-- 构建命令：`pnpm build`（= `vitepress build docs`）。
-- 输出目录：`docs/.vitepress/dist`。
-- Node 版本：20（Pages 设置或 `NODE_VERSION=20` 环境变量）。
-- base 路径：`/`（Cloudflare Pages 自有域名，无需子路径前缀）。
-- 方式一（推荐）：Cloudflare Pages 连接 Git 仓库，推送到 `main` 自动构建部署。
-- 方式二：`npx wrangler pages deploy docs/.vitepress/dist` 手动推送产物。
-- 部署后验证：首页/文章页/标签页/搜索可访问；`/admin` 显示"仅本地可用"提示；`/api/admin/posts` 返回 404；`rss.xml` 可访问。
+- 构建命令：`pnpm build`（= `vitepress build docs`）；输出目录 `docs/.vitepress/dist`；Node 20；base `/`。
+- 方式一（推荐）：Cloudflare Pages 连接 Git 仓库自动构建；方式二：`npx wrangler pages deploy docs/.vitepress/dist`。
+- 部署后验证：首页/合集/文章/标签/归档可访问；`/admin` 显示"仅本地可用"；`/api/admin/*` 返回 404；`rss.xml`、`sitemap.xml` 可访问。
 
 ## 10. 测试策略（vitest）
 
-测试文件与被测模块同目录或 `__tests__/` 下，命名 `*.test.ts`。
-
 | 模块 | 测试要点 |
 |---|---|
-| `lib/slug.ts` | 合法 slug（英文/中文/数字/`-`/`_`）通过；`../x`、`a/b`、`a\\b`、`a.b`、绝对路径、空串全部拒绝；标题→slug 转换：英文小写化、空格转 `-`、非法字符剔除、中文保留 |
-| `lib/frontmatter.ts` | 解析含 frontmatter 的文档；无 frontmatter 的文档；序列化后再解析往返一致；中文标题、标签数组、含特殊字符的摘要 |
-| `lib/tags.ts` | 文章数组 → 标签→文章数聚合；无标签文章；排序 |
-| `server/posts-store.ts` | 用 `os.tmpdir()` 下的临时目录：列表按日期倒序、读取单篇、保存新建（文件落盘且内容正确）、保存更新、原子写（tmp 文件不残留）、删除进入 `.trash/` 且原路径消失、非法 slug 拒绝、删除不存在的文章报错 |
-| `server/upload-smms.ts` | mock 全局 fetch：成功返回 `{url}`；Token 缺失抛带中文提示的错误；SM.MS 返回业务错误（`success:false`）时抛出含 sm.ms 错误信息的错误；网络失败时错误归一化 |
-| `data/posts.data.ts` 标签聚合 | 复用 `lib/tags.ts`，对 loader 输出形状做一例固定数据测试 |
+| `lib/slug.ts` | 合法 slug 通过；`../x`、`a/b`、绝对路径等全部拒绝；UUID 生成合法 |
+| `lib/frontmatter.ts` | 解析/序列化往返一致；无 frontmatter；中文字段 |
+| `lib/tags.ts` | 标签聚合；comparePosts 排序（置顶/日期/稳定性） |
+| `lib/collections.ts` | compareCollectionPosts 章节序；compareCollections（order 优先、createdAt 兜底、slug 稳定）；aggregateCollections（计数/剔除草稿/排序） |
+| `server/posts-store.ts` | 临时目录下的 CRUD、order 分配、trash、原子写、防路径穿越 |
+| `server/collections-store.ts` | CRUD、list 按 order 升序（createdAt 兜底）、save 保留 createdAt/order、原子写、防路径穿越 |
+| `server/routes.ts` | 路由解析（含 `collections/order` 与 `collections/:slug` 不混淆）+ 集成测试：order 分配、合集/文章排序接口（重写 order、非法输入 400、重复 slug 400、元数据不被排序破坏） |
+| `data/sitemap.ts` | URL 集合与草稿过滤 |
+| `server/upload-cos.ts` | mock COS 客户端：成功/未配置/失败错误归一化 |
 
-不做的测试：Vue 组件不做重型组件测试（编辑器交互靠手动验证）；VitePress config 不做集成测试。
+Vue 组件不做重型组件测试（交互手动验证）；VitePress config 不做集成测试。
 
 ## 11. 全局约束
 
-- Node ≥ 20；pnpm 作为包管理器。
-- VitePress 1.x 最新稳定版；Vue 3；TypeScript；vitest 最新稳定版。
-- 任何密钥（SMMS_TOKEN）不得出现在浏览器代码、构建产物、Git 提交中；`.env.local` 必须在 `.gitignore`。
-- 所有写盘路径必须经过 slug 校验。
-- 管理功能（API + 完整 admin UI）只能在 dev 形态可用；build 产物中 admin 页只显示提示。
-- 富文本编辑器（tiptap）仅挂在写作后台；线上 admin 页只渲染"仅本地可用"提示，不挂载编辑器组件（编辑器依赖只在开发态生效）。
-- 不引入第二套**发布级** Markdown 渲染器：线上最终产物与右栏预览一律以 VitePress 的 `createMarkdownRenderer` 为准；编辑器可用自身引擎仅做编辑态所见即所得渲染。
+- Node ≥ 20；pnpm；VitePress 1.x；Vue 3；TypeScript；vitest。
+- 任何密钥（COS_*）不得出现在浏览器代码、构建产物、Git 提交中；`.env.local` 必须在 `.gitignore`。
+- 所有写盘路径必须经过 slug 校验（`lib/slug.ts`，安全关键）。
+- 管理功能只能在 dev 形态可用；build 产物中 admin 页只显示提示。
+- 不引入第二套**发布级** Markdown 渲染器：线上渲染一律以 VitePress 为准；md-editor-v3 仅做编辑态预览。
+- 排序规则全站一致：文章 `comparePosts`、合集内文章 `compareCollectionPosts`、合集列表 `compareCollections`（lib 层纯函数，读者侧/后台/构建期共用）。
 - 部署目标 Cloudflare Pages，base 为 `/`。
-- 文章源文件一律存放在 `docs/posts/`，删除进入 `docs/posts/.trash/`。
 
 ## 12. 明确不做（YAGNI）
 
 - 不做用户系统/登录（写作后台只在本地 dev，无多用户）。
-- 不做草稿/发布状态、草稿箱（文件在 posts/ 里即发布；要藏稿就不保存或放 trash）。
 - 不做在线后台的线上版本（admin 不上线）。
-- 不做第二种图床（只接 SM.MS；上传模块边界清晰，将来可加）。
-- 不做评论管理后台、访问统计、站点地图以外的 SEO 工具（sitemap 如需可后加）。
-- 不自研编辑器核心：富文本编辑用开源编辑器（tiptap）封装为一个可替换适配层，不做零投入重写一套 WYSIWYG/ProseMirror 引擎。
+- 不做第二种图床（只接腾讯云 COS；上传模块边界清晰，将来可加）。
+- 不做评论管理后台、访问统计。
+- 不自研编辑器核心：md-editor-v3 封装为可替换适配层。
+- 不做拖拽排序的跨行拖动/多选排序（↑↓ 步进已覆盖当前合集规模）。
