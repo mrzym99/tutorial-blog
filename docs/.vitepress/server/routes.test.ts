@@ -61,6 +61,16 @@ describe('parseAdminRoute', () => {
       slug: 'c1',
     })
   })
+
+  it('解析合集列表排序路由（不与 /collections/:slug 混淆）', () => {
+    expect(parseAdminRoute('/api/admin/collections/order', 'PUT')).toEqual({
+      type: 'collections-order',
+    })
+    expect(parseAdminRoute('/api/admin/collections/order')).toEqual({
+      type: 'collection-get',
+      slug: 'order',
+    })
+  })
 })
 // ---------- handleAdminRequest 集成（真实 store + mock req/res） ----------
 
@@ -249,5 +259,65 @@ describe('handleAdminRequest：合集文章排序', () => {
       slugs: 'p1',
     })
     expect(badBody.statusCode).toBe(400)
+  })
+})
+
+describe('handleAdminRequest：合集列表排序', () => {
+  it('按 slug 列表顺序重写合集 order（1、2、3），元数据保持不变', async () => {
+    await collections.create({ title: 'C1', description: '简介1' } as any)
+    await collections.create({ title: 'C2' } as any)
+    await collections.create({ title: 'C3' } as any)
+    // 同日创建按 slug 排序，创建顺序不可靠，按标题取 slug
+    const byTitle = new Map((await collections.list()).map((c) => [c.title, c.slug]))
+    const s1 = byTitle.get('C1')!
+    const s2 = byTitle.get('C2')!
+    const s3 = byTitle.get('C3')!
+
+    const res = await request('/api/admin/collections/order', 'PUT', { slugs: [s3, s1, s2] })
+    expect(res.statusCode).toBe(200)
+    expect(res.json).toEqual({ count: 3 })
+
+    expect((await collections.get(s3))?.order).toBe(1)
+    expect((await collections.get(s1))?.order).toBe(2)
+    expect((await collections.get(s2))?.order).toBe(3)
+    // 元数据不被排序破坏
+    expect((await collections.get(s1))?.title).toBe('C1')
+    expect((await collections.get(s1))?.description).toBe('简介1')
+    // list 按 order 升序
+    expect((await collections.list()).map((c) => c.slug)).toEqual([s3, s1, s2])
+  })
+
+  it('合集不存在 → 400 且不改动任何 order；slugs 非法 → 400；GET → 405', async () => {
+    await collections.create({ title: 'C' } as any)
+    const slug = (await collections.list())[0].slug
+
+    const missing = await request('/api/admin/collections/order', 'PUT', {
+      slugs: [slug, 'ghost'],
+    })
+    expect(missing.statusCode).toBe(400)
+    expect((await collections.get(slug))?.order).toBeUndefined()
+
+    const badBody = await request('/api/admin/collections/order', 'PUT', { slugs: 'x' })
+    expect(badBody.statusCode).toBe(400)
+
+    const dup = await request('/api/admin/collections/order', 'PUT', { slugs: [slug, slug] })
+    expect(dup.statusCode).toBe(400)
+
+    // GET 不走排序分支，回落为 collection-get（不存在名为 order 的合集 → 404）
+    const wrongMethod = await request('/api/admin/collections/order', 'GET')
+    expect(wrongMethod.statusCode).toBe(404)
+  })
+
+  it('编辑合集元数据（不带 order）后手动排序不丢失', async () => {
+    await collections.create({ title: 'C' } as any)
+    const slug = (await collections.list())[0].slug
+    await request('/api/admin/collections/order', 'PUT', { slugs: [slug] })
+    expect((await collections.get(slug))?.order).toBe(1)
+
+    await request(`/api/admin/collections/${slug}`, 'PUT', {
+      frontmatter: { title: '改名' },
+    })
+    expect((await collections.get(slug))?.order).toBe(1)
+    expect((await collections.get(slug))?.title).toBe('改名')
   })
 })

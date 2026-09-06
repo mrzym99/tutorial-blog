@@ -24,6 +24,7 @@ const view = ref<View>('collections') // 「先有合集才有文章」：默认
 // 当前查看的合集 slug（collection-detail 视图）
 const currentCollection = ref('')
 const reorderSaving = ref(false)
+const collectionOrderSaving = ref(false)
 
 async function loadList() {
   list.value = await api<PostItem[]>('/api/admin/posts')
@@ -45,6 +46,7 @@ async function loadCollections() {
         cover?: string
         draft?: boolean
         createdAt?: string
+        order?: number
       }[]
     >('/api/admin/collections'),
     api<ListItem[]>('/api/admin/posts'),
@@ -187,6 +189,29 @@ async function reorderPosts(slugs: string[]) {
 }
 
 // ---- 合集 CRUD ----
+
+/** 合集列表上移/下移后保存新的顺序；失败时重新拉取列表回滚展示 */
+async function reorderCollections(slugs: string[]) {
+  if (collectionOrderSaving.value) return
+  collectionOrderSaving.value = true
+  try {
+    const res = await fetch('/api/admin/collections/order', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slugs }),
+    })
+    if (res.ok) {
+      await loadCollections()
+      message.success('排序已保存')
+    } else {
+      const data = await res.json().catch(() => ({}))
+      message.error((data as { error?: string }).error || '排序保存失败')
+      await loadCollections()
+    }
+  } finally {
+    collectionOrderSaving.value = false
+  }
+}
 
 async function createCollection(value: CollectionFormValue) {
   const res = await fetch('/api/admin/collections', {
@@ -406,11 +431,13 @@ async function api<T>(path: string): Promise<T> {
       <CollectionList
         v-if="view === 'collections'"
         :items="collections"
+        :saving="collectionOrderSaving"
         @open="openCollection"
         @write="newPost"
         @remove="removeCollection"
         @create="createCollection"
         @save="saveCollection"
+        @reorder="reorderCollections"
       />
       <CollectionDetail
         v-else-if="view === 'collection-detail' && currentCollectionMeta"

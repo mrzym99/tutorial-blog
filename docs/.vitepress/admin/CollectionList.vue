@@ -21,6 +21,7 @@ export interface CollectionItem {
   cover?: string
   draft?: boolean
   createdAt?: string
+  order?: number
   count: number
 }
 
@@ -31,16 +32,27 @@ export interface CollectionFormValue {
   draft: boolean
 }
 
-const props = defineProps<{ items: CollectionItem[] }>()
+const props = defineProps<{ items: CollectionItem[]; saving?: boolean }>()
 const emit = defineEmits<{
   open: [slug: string]
   write: [slug: string]
   remove: [slug: string]
   create: [value: CollectionFormValue]
   save: [slug: string, value: CollectionFormValue]
+  /** 上移/下移后发出新的完整有序 slug 列表，由 AdminApp 调接口保存 */
+  reorder: [slugs: string[]]
 }>()
 
 const message = useMessage()
+
+/** 上移/下移后发出新的完整顺序（items 已由服务端按展示序排好） */
+function move(index: number, delta: -1 | 1) {
+  const target = index + delta
+  if (target < 0 || target >= props.items.length) return
+  const slugs = props.items.map((c) => c.slug)
+  ;[slugs[index], slugs[target]] = [slugs[target], slugs[index]]
+  emit('reorder', slugs)
+}
 
 // ---- 新建 / 编辑弹窗 ----
 const modalOpen = ref(false)
@@ -119,6 +131,18 @@ function removeCover() {
 
 const columns = [
   {
+    title: '序号',
+    key: 'order',
+    width: 70,
+    render(_row: CollectionItem, index: number) {
+      return h(
+        'span',
+        { style: 'font-weight:700;font-variant-numeric:tabular-nums;color:var(--vp-c-brand-1);' },
+        String(index + 1).padStart(2, '0'),
+      )
+    },
+  },
+  {
     title: '封面',
     key: 'cover',
     width: 88,
@@ -172,9 +196,29 @@ const columns = [
   {
     title: '操作',
     key: 'actions',
-    width: 300,
+    width: 380,
     render(row: CollectionItem) {
+      // 分页下 naive-ui 的 render 下标是页内的，用 slug 查全量下标再上移/下移
+      const index = props.items.findIndex((c) => c.slug === row.slug)
       return h('div', { style: 'display:inline-flex;gap:8px;' }, [
+        h(
+          NButton,
+          {
+            size: 'small',
+            disabled: props.saving || index === 0,
+            onClick: () => move(index, -1),
+          },
+          { default: () => '↑' },
+        ),
+        h(
+          NButton,
+          {
+            size: 'small',
+            disabled: props.saving || index === props.items.length - 1,
+            onClick: () => move(index, 1),
+          },
+          { default: () => '↓' },
+        ),
         h(
           NButton,
           { size: 'small', onClick: () => emit('open', row.slug) },

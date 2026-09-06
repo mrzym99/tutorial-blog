@@ -39,6 +39,15 @@ describe('create / list', () => {
     expect(list.map((l) => l.title)).toEqual(['旧', '新', '今天'])
   })
 
+  it('list 按 order 升序优先，未设置 order 的按 createdAt 兜底排后', async () => {
+    await store.create(fm({ title: '手动2', createdAt: '2026-01-01', order: 2 }))
+    await store.create(fm({ title: '手动1', createdAt: '2026-06-01', order: 1 }))
+    await store.create(fm({ title: '未排序', createdAt: '2025-01-01' }))
+    const list = await store.list()
+    expect(list.map((l) => l.title)).toEqual(['手动1', '手动2', '未排序'])
+    expect(list[2].order).toBeUndefined()
+  })
+
   it('list 跳过临时文件与非 .md 文件', async () => {
     await store.create(fm({ title: '有效' }))
     await fs.writeFile(path.join(dir, '.abc.md.tmp'), '半截', 'utf8')
@@ -85,6 +94,15 @@ describe('get / save', () => {
     const { slug } = await store.create(fm({ title: '旧', createdAt: '2026-01-01' }))
     await store.save(slug, fm({ title: '新', createdAt: '2026-02-02' }))
     expect((await store.get(slug))?.createdAt).toBe('2026-02-02')
+  })
+
+  it('save 未携带 order 时保留原值（编辑表单不维护展示序号）', async () => {
+    const { slug } = await store.create(fm({ title: '旧' }))
+    await store.save(slug, fm({ title: '改名', order: 3 }))
+    await store.save(slug, fm({ title: '再改名' }))
+    const rec = await store.get(slug)
+    expect(rec?.order).toBe(3)
+    expect(rec?.title).toBe('再改名')
   })
 
   it('原子写：无 .tmp 残留', async () => {

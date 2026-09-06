@@ -27,6 +27,7 @@ export default createContentLoader('collections/*.md', {
           cover: fm.cover,
           draft: fm.draft,
           createdAt: formatDate(fm.createdAt),
+          order: typeof fm.order === 'number' ? fm.order : undefined,
         }
       })
     return { collections }

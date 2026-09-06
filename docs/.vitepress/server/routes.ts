@@ -12,7 +12,7 @@ import {
   type PostMeta,
   type PostRecord,
 } from './posts-store'
-import type { CollectionsStore } from './collections-store'
+import type { CollectionsStore, CollectionRecord } from './collections-store'
 import type { UploadFile, UploadResult } from './upload-cos'
 import { CosError } from './upload-cos'
 import { validateSlug } from '../lib/slug'
@@ -37,6 +37,7 @@ export type AdminRoute =
   | { type: 'collection-save'; slug: string }
   | { type: 'collection-remove'; slug: string }
   | { type: 'collection-order'; slug: string }
+  | { type: 'collections-order' }
   | { type: 'notfound' }
 
 /** 纯函数：把 URL 路径 + HTTP 方法解析为路由，方便单测。 */
@@ -63,10 +64,15 @@ export function parseAdminRoute(urlPath: string, method = 'GET'): AdminRoute {
     if (up === 'DELETE') return { type: 'trash-remove', slug: parts[1] }
     return { type: 'trash-restore', slug: parts[1] }
   }
-  // 合集路由：/collections（GET 列表 / POST 新建）、/collections/:slug（GET/PUT/DELETE）
+  // 合集路由：/collections（GET 列表 / POST 新建）、/collections/order（PUT 合集列表排序）、
+  // /collections/:slug（GET/PUT/DELETE）
   if (parts.length === 1 && parts[0] === 'collections') {
     if (up === 'POST') return { type: 'collection-create' }
     return { type: 'collection-list' }
+  }
+  // 需先于通用 /collections/:slug 匹配，避免 order 被当作 slug；仅 PUT 生效，其余方法走原语义
+  if (parts.length === 2 && parts[0] === 'collections' && parts[1] === 'order') {
+    if (up === 'PUT') return { type: 'collections-order' }
   }
   if (parts.length === 2 && parts[0] === 'collections') {
     const slug = parts[1]
@@ -141,6 +147,9 @@ export async function handleAdminRequest(
       case 'collection-order':
         if (method !== 'PUT') return methodNotAllowed(res)
         return await handleCollectionOrder(res, route.slug, req, ctx)
+      case 'collections-order':
+        if (method !== 'PUT') return methodNotAllowed(res)
+        return await handleCollectionsOrder(res, req, ctx)
       default:
         return notFound(res)
     }
@@ -417,6 +426,52 @@ async function handleCollectionOrder(
   ctx.onSidebarChange?.()
 }
 
+/**
+ * 合集列表排序：body 为 { slugs: string[] }（全部合集的完整有序 slug 列表）。
+ * 按数组下标把每个合集 order 重写为 1、2、3…；仅接受实际存在的合集。
+ */
+async function handleCollectionsOrder(
+  res: ServerResponse,
+  req: IncomingMessage,
+  ctx: AdminContext,
+): Promise<void> {
+  let parsed: any
+  try {
+    parsed = JSON.parse((await readBody(req)).toString('utf8'))
+  } catch {
+    return badRequest(res, '请求体不是合法 JSON')
+  }
+  const slugs: unknown = parsed?.slugs
+  if (!Array.isArray(slugs) || slugs.some((s) => typeof s !== 'string'))
+    return badRequest(res, 'slugs 必须为字符串数组')
+  if (new Set(slugs as string[]).size !== slugs.length)
+    return badRequest(res, 'slugs 存在重复项')
+
+  // 先整体校验再落盘，避免半套合集改了 order、另一半报错的中间态
+  const records: CollectionRecord[] = []
+  for (const s of slugs as string[]) {
+    const rec = await ctx.collections.get(s)
+    if (!rec) return badRequest(res, `合集「${s}」不存在`)
+    records.push(rec)
+  }
+
+  // 顺序写，避免并发写不同文件时的竞争；order 从 1 起连续编号
+  for (let i = 0; i < records.length; i++) {
+    const rec = records[i]
+    await ctx.collections.save(rec.slug, {
+      title: rec.title,
+      description: rec.description,
+      cover: rec.cover,
+      draft: rec.draft,
+      createdAt: rec.createdAt,
+      order: i + 1,
+    })
+  }
+  json(res, 200, { count: records.length })
+  // 合集顺序影响侧栏组头排列与首页合集网格
+  ctx.onSidebarChange?.()
+}
+
 async function handleUpload(
   res: ServerResponse,
   req: IncomingMessage,
@@ -476,6 +531,8 @@ function validateCollectionFrontmatter(fm: unknown): string | null {
   const createdAt = (fm as CollectionFrontmatter).createdAt
   if (createdAt !== undefined && !isValidDate(createdAt))
     return 'frontmatter.createdAt 必须为 YYYY-MM-DD'
+  const order = (fm as CollectionFrontmatter).order
+  if (order !== undefined && typeof order !== 'number') return 'frontmatter.order 必须为数字'
   return null
 }
 

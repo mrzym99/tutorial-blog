@@ -7,7 +7,7 @@ import { adminPlugin } from "./server/plugin";
 import { extractFrontmatter } from "./lib/frontmatter";
 import { comparePosts } from "./lib/tags";
 import type { PostMeta } from "./lib/tags";
-import { compareCollectionPosts } from "./lib/collections";
+import { compareCollectionPosts, compareCollections } from "./lib/collections";
 import { buildRssXml } from "./data/rss";
 import { buildSitemapXml } from "./data/sitemap";
 import { createCosUploader, assertCosConfig } from "./server/upload-cos";
@@ -164,14 +164,19 @@ async function generateFeedFiles(siteConfig: { srcDir: string; outDir: string })
 }
 
 /** 扫描 collections/ 每个合集，提取 CollectionMeta（供侧栏与 sitemap 使用，草稿在 sitemap 内过滤）。 */
-function collectCollectionMetas(docsDir: string): { slug: string; title: string; draft?: boolean }[] {
+function collectCollectionMetas(docsDir: string): {
+  slug: string;
+  title: string;
+  draft?: boolean;
+  order?: number;
+}[] {
   let entries: string[];
   try {
     entries = readdirSync(path.join(docsDir, "collections"));
   } catch {
     return [];
   }
-  const collections: { slug: string; title: string; draft?: boolean }[] = [];
+  const collections: { slug: string; title: string; draft?: boolean; order?: number }[] = [];
   for (const name of entries) {
     if (!name.endsWith(".md") || name.startsWith(".")) continue;
     const raw = readFileSync(path.join(docsDir, "collections", name), "utf8");
@@ -181,9 +186,11 @@ function collectCollectionMetas(docsDir: string): { slug: string; title: string;
       slug: name.slice(0, -".md".length),
       title: frontmatter.title,
       draft: frontmatter.draft,
+      order: frontmatter.order,
     });
   }
-  return collections;
+  // 与前台合集页一致：order 升序（未设置按 createdAt 兜底，这里无日期则 slug 稳定序）
+  return collections.sort(compareCollections);
 }
 
 /** 扫描 posts/ 每篇文章，提取 PostMeta 并按 date 倒序（供侧栏与 RSS/sitemap 共用）。 */

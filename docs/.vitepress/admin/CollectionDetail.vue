@@ -82,26 +82,28 @@ const columns = [
   {
     title: '操作',
     key: 'actions',
-    width: 260,
+    width: 220,
     render(row: CollectionPostItem, index: number) {
       return h('div', { style: 'display:inline-flex;gap:6px;' }, [
         h(
           NButton,
           {
             size: 'small',
+            title: '上移',
             disabled: props.saving || index === 0,
             onClick: () => move(index, -1),
           },
-          { default: () => '↑ 上移' },
+          { default: () => '↑' },
         ),
         h(
           NButton,
           {
             size: 'small',
+            title: '下移',
             disabled: props.saving || index === sorted.value.length - 1,
             onClick: () => move(index, 1),
           },
-          { default: () => '↓ 下移' },
+          { default: () => '↓' },
         ),
         h(NButton, { size: 'small', onClick: () => emit('edit', row.slug) }, { default: () => '编辑' }),
         h(

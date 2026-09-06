@@ -32,8 +32,10 @@ export interface CollectionFrontmatter {
   cover?: string
   /** 草稿合集不进入首页与动态路由 */
   draft?: boolean
-  /** YYYY-MM-DD，创建日期（决定合集展示顺序） */
+  /** YYYY-MM-DD，创建日期（无 order 时作为合集展示顺序兜底） */
   createdAt?: string
+  /** 合集展示序号（从 1 起，列表排序接口整体重写；未设置时按 createdAt 兜底） */
+  order?: number
 }
 
 export const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/

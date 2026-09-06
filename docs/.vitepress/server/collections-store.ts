@@ -35,7 +35,7 @@ export class CollectionsStore {
     return result.slug
   }
 
-  /** 列出全部合集，按创建日期升序（早的在前），无日期按 slug 稳定排序。 */
+  /** 列出全部合集，按展示序（order 升序 → createdAt 兜底），无日期按 slug 稳定排序。 */
   async list(): Promise<CollectionRecord[]> {
     await this.ensureBase()
     const entries = await fs.readdir(this.collectionsDir, { withFileTypes: true })
@@ -58,9 +58,13 @@ export class CollectionsStore {
         cover: frontmatter.cover,
         draft: frontmatter.draft,
         createdAt: frontmatter.createdAt,
+        order: frontmatter.order,
       })
     }
     return records.sort((a, b) => {
+      const oa = a.order ?? Number.MAX_SAFE_INTEGER
+      const ob = b.order ?? Number.MAX_SAFE_INTEGER
+      if (oa !== ob) return oa - ob
       const da = a.createdAt ?? ''
       const db = b.createdAt ?? ''
       if (da !== db) return da < db ? -1 : 1
@@ -82,6 +86,7 @@ export class CollectionsStore {
         cover: frontmatter.cover,
         draft: frontmatter.draft,
         createdAt: frontmatter.createdAt,
+        order: frontmatter.order,
       }
     } catch (err) {
       if (isENOENT(err)) return null
@@ -108,7 +113,8 @@ export class CollectionsStore {
 
   /**
    * 保存合集元数据（整体覆盖 frontmatter）。
-   * createdAt 不在编辑表单里，未携带时保留原值，避免编辑保存后创建日期丢失。
+   * createdAt / order 不在编辑表单里，未携带时保留原值，
+   * 避免编辑保存后创建日期与手动排序丢失。
    */
   async save(
     slug: string,
@@ -117,9 +123,11 @@ export class CollectionsStore {
     const checked = this.assertValidSlug(slug)
     await this.ensureBase()
     let fm = frontmatter
-    if (!fm.createdAt) {
+    if (!fm.createdAt || typeof fm.order !== 'number') {
       const existing = await this.get(checked)
-      if (existing?.createdAt) fm = { ...fm, createdAt: existing.createdAt }
+      if (!fm.createdAt && existing?.createdAt) fm = { ...fm, createdAt: existing.createdAt }
+      if (typeof fm.order !== 'number' && typeof existing?.order === 'number')
+        fm = { ...fm, order: existing.order }
     }
     const tmp = path.join(this.collectionsDir, `.${checked}${TMP_SUFFIX}`)
     await fs.writeFile(tmp, buildMarkdown(fm, ''), 'utf8')

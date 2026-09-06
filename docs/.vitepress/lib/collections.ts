@@ -10,8 +10,10 @@ export interface CollectionMeta {
   description?: string
   cover?: string
   draft?: boolean
-  /** YYYY-MM-DD，创建日期（早的在前） */
+  /** YYYY-MM-DD，创建日期（无 order 时作为展示顺序兜底） */
   createdAt?: string
+  /** 合集展示序号（从 1 起，后台排序接口整体重写；未设置时按 createdAt 兜底） */
+  order?: number
 }
 
 export interface CollectionWithCount extends CollectionMeta {
@@ -37,7 +39,22 @@ export function postsByCollection(posts: PostMeta[], slug: string): PostMeta[] {
 }
 
 /**
- * 合集列表 → 附带公开文章数、剔除草稿合集、按 createdAt 升序（早的在前，无日期按标题稳定排序）。
+ * 合集展示排序：order 升序（未设置排最后）→ createdAt 升序兜底 → slug 稳定序。
+ * 与合集内文章的 compareCollectionPosts 同思路：手动章节序优先，日期只兜底。
+ */
+export function compareCollections(a: CollectionMeta, b: CollectionMeta): number {
+  const oa = a.order ?? Number.MAX_SAFE_INTEGER
+  const ob = b.order ?? Number.MAX_SAFE_INTEGER
+  if (oa !== ob) return oa - ob
+  const da = a.createdAt ?? ''
+  const db = b.createdAt ?? ''
+  if (da !== db) return da < db ? -1 : 1
+  return a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0
+}
+
+/**
+ * 合集列表 → 附带公开文章数、剔除草稿合集、按 compareCollections 排序
+ * （order 升序，未排序的合集按 createdAt 兜底）。
  */
 export function aggregateCollections(
   collections: CollectionMeta[],
@@ -49,10 +66,5 @@ export function aggregateCollections(
       ...c,
       count: posts.filter((p) => p.collection === c.slug).length,
     }))
-    .sort((a, b) => {
-      const da = a.createdAt ?? ''
-      const db = b.createdAt ?? ''
-      if (da !== db) return da < db ? -1 : 1
-      return a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0
-    })
+    .sort(compareCollections)
 }
