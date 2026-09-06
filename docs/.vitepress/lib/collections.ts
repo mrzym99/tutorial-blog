@@ -10,7 +10,7 @@ export interface CollectionMeta {
   description?: string
   cover?: string
   draft?: boolean
-  /** YYYY-MM-DD，创建日期（新在前） */
+  /** YYYY-MM-DD，创建日期（早的在前） */
   createdAt?: string
 }
 
@@ -37,7 +37,7 @@ export function postsByCollection(posts: PostMeta[], slug: string): PostMeta[] {
 }
 
 /**
- * 合集列表 → 附带公开文章数、剔除草稿合集、按 createdAt 倒序（新在前，无日期按标题稳定排序）。
+ * 合集列表 → 附带公开文章数、剔除草稿合集、按 createdAt 升序（早的在前，无日期按标题稳定排序）。
  */
 export function aggregateCollections(
   collections: CollectionMeta[],
@@ -52,7 +52,7 @@ export function aggregateCollections(
     .sort((a, b) => {
       const da = a.createdAt ?? ''
       const db = b.createdAt ?? ''
-      if (da !== db) return da > db ? -1 : 1
+      if (da !== db) return da < db ? -1 : 1
       return a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0
     })
 }

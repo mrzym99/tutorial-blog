@@ -30,13 +30,13 @@ describe('create / list', () => {
     expect(raw).toMatch(/createdAt: '?\d{4}-\d{2}-\d{2}'?/)
   })
 
-  it('list 列出全部合集并按 createdAt 倒序', async () => {
+  it('list 列出全部合集并按 createdAt 升序', async () => {
     await store.create(fm({ title: '旧', createdAt: '2026-01-01' }))
     await store.create(fm({ title: '新', createdAt: '2026-06-01' }))
-    await store.create(fm({ title: '今天' })) // 缺省 createdAt = 今天，应排最前
+    await store.create(fm({ title: '今天' })) // 缺省 createdAt = 今天，应排最后
     const list = await store.list()
     expect(list).toHaveLength(3)
-    expect(list.map((l) => l.title)).toEqual(['今天', '新', '旧'])
+    expect(list.map((l) => l.title)).toEqual(['旧', '新', '今天'])
   })
 
   it('list 跳过临时文件与非 .md 文件', async () => {
