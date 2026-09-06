@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { h, ref, computed } from 'vue'
+import { h, ref, computed, watch, type HTMLAttributes } from 'vue'
 import {
   NButton,
   NDataTable,
@@ -12,6 +12,7 @@ import {
   type DataTableColumns,
 } from 'naive-ui'
 import { useMessage } from 'naive-ui'
+import { animateRowSwap } from './flip'
 
 /** 合集列表行：元数据 + 文章数（AdminApp 聚合） */
 export interface CollectionItem {
@@ -45,12 +46,39 @@ const emit = defineEmits<{
 
 const message = useMessage()
 
-/** 上移/下移后发出新的完整顺序（items 已由服务端按展示序排好） */
+// ---- 乐观排序 + FLIP 动画 ----
+// 交换先落到本地覆盖（立即重渲染、行平滑滑动），服务端保存后 props 更新，覆盖随之重置。
+const rootEl = ref<HTMLElement | null>(null)
+const localOrder = ref<string[] | null>(null)
+
+const displayed = computed<CollectionItem[]>(() => {
+  if (!localOrder.value) return props.items
+  const bySlug = new Map(props.items.map((c) => [c.slug, c]))
+  const ordered = localOrder.value
+    .map((s) => bySlug.get(s))
+    .filter((c): c is CollectionItem => Boolean(c))
+  const seen = new Set(ordered.map((c) => c.slug))
+  return [...ordered, ...props.items.filter((c) => !seen.has(c.slug))]
+})
+
+// 服务端保存完成（或 focus 触发刷新）后 props 变化，放弃本地覆盖
+watch(() => props.items, () => (localOrder.value = null))
+
+// naive-ui rowProps 类型不含 data-*，断言绕过；data-slug 供 FLIP 动画定位行
+const rowProps = (row: CollectionItem) =>
+  ({ 'data-slug': row.slug }) as unknown as HTMLAttributes
+
+/** 上移/下移：基于当前展示顺序交换，动画 + 通知 AdminApp 持久化 */
 function move(index: number, delta: -1 | 1) {
   const target = index + delta
-  if (target < 0 || target >= props.items.length) return
-  const slugs = props.items.map((c) => c.slug)
-  ;[slugs[index], slugs[target]] = [slugs[target], slugs[index]]
+  if (target < 0 || target >= displayed.value.length) return
+  const slugs = displayed.value.map((c) => c.slug)
+  const a = slugs[index]
+  const b = slugs[target]
+  ;[slugs[index], slugs[target]] = [b, a]
+  localOrder.value = slugs
+  // DOM 仍在旧顺序上（渲染在 nextTick 才发生），先测位再动画
+  animateRowSwap(() => rootEl.value, a, b)
   emit('reorder', slugs)
 }
 
@@ -199,7 +227,7 @@ const columns = [
     width: 380,
     render(row: CollectionItem) {
       // 分页下 naive-ui 的 render 下标是页内的，用 slug 查全量下标再上移/下移
-      const index = props.items.findIndex((c) => c.slug === row.slug)
+      const index = displayed.value.findIndex((c) => c.slug === row.slug)
       return h('div', { style: 'display:inline-flex;gap:8px;' }, [
         h(
           NButton,
@@ -214,7 +242,7 @@ const columns = [
           NButton,
           {
             size: 'small',
-            disabled: props.saving || index === props.items.length - 1,
+            disabled: props.saving || index === displayed.value.length - 1,
             onClick: () => move(index, 1),
           },
           { default: () => '↓' },
@@ -242,7 +270,7 @@ const columns = [
 </script>
 
 <template>
-  <div class="page">
+  <div ref="rootEl" class="page">
     <div class="page-head">
       <h1>合集</h1>
       <span class="count">{{ items.length }} 个</span>
@@ -253,8 +281,9 @@ const columns = [
       class="table"
       flex-height
       :columns="columns"
-      :data="items"
+      :data="displayed"
       :row-key="(row: CollectionItem) => row.slug"
+      :row-props="rowProps"
       :bordered="false"
       :striped="true"
       size="small"

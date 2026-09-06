@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { h, computed } from 'vue'
+import { h, ref, computed, watch, type HTMLAttributes } from 'vue'
 import { NButton, NDataTable, NTag, NEmpty, type DataTableColumns } from 'naive-ui'
 import { compareCollectionPosts } from '../lib/collections'
+import { animateRowSwap } from './flip'
 
 /** 文章行：列表元数据 + 合集内序号（AdminApp 传入） */
 export interface CollectionPostItem {
@@ -36,11 +37,38 @@ const emit = defineEmits<{
 // 章节序：order 升序（无 order 兜底排最后，规则与前台合集详情页一致）
 const sorted = computed(() => [...props.posts].sort(compareCollectionPosts))
 
+// ---- 乐观排序 + FLIP 动画 ----
+// 交换先落到本地覆盖（立即重渲染、行平滑滑动），服务端保存后 props 更新，覆盖随之重置。
+const rootEl = ref<HTMLElement | null>(null)
+const localOrder = ref<string[] | null>(null)
+
+const displayed = computed<CollectionPostItem[]>(() => {
+  if (!localOrder.value) return sorted.value
+  const bySlug = new Map(props.posts.map((p) => [p.slug, p]))
+  const ordered = localOrder.value
+    .map((s) => bySlug.get(s))
+    .filter((p): p is CollectionPostItem => Boolean(p))
+  const seen = new Set(ordered.map((p) => p.slug))
+  return [...ordered, ...sorted.value.filter((p) => !seen.has(p.slug))]
+})
+
+// 服务端保存完成（或 focus 触发刷新）后 props 变化，放弃本地覆盖
+watch(() => props.posts, () => (localOrder.value = null))
+
+// naive-ui rowProps 类型不含 data-*，断言绕过；data-slug 供 FLIP 动画定位行
+const rowProps = (row: CollectionPostItem) =>
+  ({ 'data-slug': row.slug }) as unknown as HTMLAttributes
+
 function move(index: number, delta: -1 | 1) {
   const target = index + delta
-  if (target < 0 || target >= sorted.value.length) return
-  const slugs = sorted.value.map((p) => p.slug)
-  ;[slugs[index], slugs[target]] = [slugs[target], slugs[index]]
+  if (target < 0 || target >= displayed.value.length) return
+  const slugs = displayed.value.map((p) => p.slug)
+  const a = slugs[index]
+  const b = slugs[target]
+  ;[slugs[index], slugs[target]] = [b, a]
+  localOrder.value = slugs
+  // DOM 仍在旧顺序上（渲染在 nextTick 才发生），先测位再动画
+  animateRowSwap(() => rootEl.value, a, b)
   emit('reorder', slugs)
 }
 
@@ -100,7 +128,7 @@ const columns = [
           {
             size: 'small',
             title: '下移',
-            disabled: props.saving || index === sorted.value.length - 1,
+            disabled: props.saving || index === displayed.value.length - 1,
             onClick: () => move(index, 1),
           },
           { default: () => '↓' },
@@ -124,7 +152,7 @@ const columns = [
 </script>
 
 <template>
-  <div class="page">
+  <div ref="rootEl" class="page">
     <div class="page-head">
       <n-button size="small" @click="emit('back')">← 返回合集</n-button>
       <h1>{{ title }}</h1>
@@ -136,8 +164,9 @@ const columns = [
       v-if="posts.length"
       class="table"
       :columns="columns"
-      :data="sorted"
+      :data="displayed"
       :row-key="(row: CollectionPostItem) => row.slug"
+      :row-props="rowProps"
       :bordered="false"
       :striped="true"
       size="small"
