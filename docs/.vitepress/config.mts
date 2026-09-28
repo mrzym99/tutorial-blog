@@ -20,13 +20,16 @@ const postsDir = path.join(docsDir, "posts");
 
 // 读取项目根 .env.local（避免引入额外依赖解析 .env）。进程环境变量优先，
 // 便于 CI / Cloudflare Pages 构建时直接在面板中注入。
+// 支持三种写法：KEY=value、KEY="带空格的值"、行尾 # 注释（值里不允许出现引号）。
 const envLocal: Record<string, string> = (() => {
   try {
     const text = readFileSync(path.join(process.cwd(), ".env.local"), "utf8");
     const map: Record<string, string> = {};
     // 注意 [ \t] 而非 \s：值为空时 \s 会吞掉换行，把下一行误当成当前 key 的值
-    for (const m of text.matchAll(/^\s*([A-Za-z_][\w]*)[ \t]*=[ \t]*"?([^\s"\n]*)"?[ \t]*$/gm)) {
-      map[m[1]] = m[2];
+    const lineRe =
+      /^\s*([A-Za-z_][\w]*)[ \t]*=[ \t]*(?:"([^"\n]*)"|([^#\n]*?))[ \t]*(?:#.*)?\r?$/gm;
+    for (const m of text.matchAll(lineRe)) {
+      map[m[1]] = m[2] ?? (m[3] ?? "").trim();
     }
     return map;
   } catch {
@@ -39,8 +42,8 @@ const pickEnv = (key: string): string => process.env[key] || envLocal[key] || ""
 // 站点信息来自环境变量（SITE_*，见 .env.example），用于页面标题、描述与 RSS/sitemap
 // 中的规范地址。url 以 https:// 开头、结尾不带斜杠，缺失时回退占位值并在构建时告警。
 const SITE = {
-  title: pickEnv("SITE_TITLE") || "教程博客",
-  description: pickEnv("SITE_DESCRIPTION") || "记录前端与工程实践的教程文章",
+  title: pickEnv("SITE_TITLE") || "博客",
+  description: pickEnv("SITE_DESCRIPTION") || "记录前端开发、VibeCoding 与工程实践里的折腾和思考",
   url: (pickEnv("SITE_URL") || "https://example.com").replace(/\/+$/, ""),
 };
 

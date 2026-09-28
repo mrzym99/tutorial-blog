@@ -1,6 +1,6 @@
-# 教程博客（tutorial-blog）
+# 个人博客（tutorial-blog）
 
-一个基于 **VitePress + Vue 3 + TypeScript** 的静态教程博客。既服务读者（搜索、标签、合集、RSS、Giscus 评论），也服务作者（本地 `/admin` 写作后台 + Markdown 编辑器 + 图床上传），整体部署为纯静态站点到 Cloudflare Pages。
+一个基于 **VitePress + Vue 3 + TypeScript** 的静态个人博客。既服务读者（搜索、标签、合集、RSS、Giscus 评论），也服务作者（本地 `/admin` 写作后台 + Markdown 编辑器 + 图床上传），整体部署为纯静态站点到 Cloudflare Pages。
 
 ## 特性
 
@@ -65,8 +65,8 @@ pnpm typecheck
 ### 1. 站点信息（环境变量 `SITE_*`）
 
 ```
-SITE_TITLE=教程博客
-SITE_DESCRIPTION=记录前端与工程实践的教程文章
+SITE_TITLE=博客
+SITE_DESCRIPTION=记录前端开发、VibeCoding 与工程实践里的折腾和思考
 SITE_URL=https://tutorial-blog.pages.dev
 SITE_ICP=京ICP备XXXXXXXX号-1        # 可选，页脚备案号；海外部署留空
 ```
