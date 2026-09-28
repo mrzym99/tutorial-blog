@@ -9,10 +9,11 @@ const posts: PostMeta[] = [
 ]
 
 describe('buildSitemapXml', () => {
-  it('包含静态页：根、关于、标签、归档', () => {
+  it('包含静态页：根、关于、合集总览、标签、归档', () => {
     const xml = buildSitemapXml(posts, { url: 'https://example.com' })
     expect(xml).toContain('https://example.com/')
     expect(xml).toContain('https://example.com/about')
+    expect(xml).toContain('https://example.com/collections')
     expect(xml).toContain('https://example.com/tags')
     expect(xml).toContain('https://example.com/archives')
   })

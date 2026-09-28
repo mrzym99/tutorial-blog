@@ -17,11 +17,6 @@ const { page, total, paged } = usePagedList(posts, PAGE_SIZE);
 
 <template>
   <div class="home-feed">
-    <header class="feed-header">
-      <h1>教程博客</h1>
-      <p>记录前端与工程实践的教程文章</p>
-    </header>
-
     <div class="post-list">
       <PostCard
         v-for="p in paged"
@@ -45,19 +40,6 @@ const { page, total, paged } = usePagedList(posts, PAGE_SIZE);
   min-height: 70vh;
 }
 
-/* ---- 页头 ---- */
-.feed-header h1 {
-  margin: 0 0 0.4rem;
-  font-size: 1.6rem;
-  font-weight: 700;
-  color: var(--vp-c-text-1);
-}
-.feed-header p {
-  margin: 0 0 1.8rem;
-  color: var(--vp-c-text-2);
-  font-size: 0.95rem;
-}
-
 /* ---- 列表间距（卡片样式在 Card 内） ---- */
 .post-list {
   display: grid;
@@ -68,11 +50,5 @@ const { page, total, paged } = usePagedList(posts, PAGE_SIZE);
   color: var(--vp-c-text-3);
   text-align: center;
   padding: 3rem 0;
-}
-
-@media (max-width: 720px) {
-  .feed-header h1 {
-    font-size: 1.5rem;
-  }
 }
 </style>

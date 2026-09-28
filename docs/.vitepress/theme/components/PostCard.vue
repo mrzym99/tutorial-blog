@@ -55,7 +55,11 @@ function tagHref(tag: string): string {
           </span>
           <time>{{ props.date }}</time>
         </span>
-        <span v-if="props.tags && props.tags.length" class="meta-item">
+        <a
+          v-if="props.tags && props.tags.length"
+          class="meta-item meta-item--link"
+          :href="tagHref(props.tags[0])"
+        >
           <span class="meta-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
               stroke-linecap="round" stroke-linejoin="round">
@@ -64,7 +68,7 @@ function tagHref(tag: string): string {
             </svg>
           </span>
           <span class="meta-text">{{ props.tags[0] }}</span>
-        </span>
+        </a>
       </div>
 
       <p v-if="props.excerpt" class="card-excerpt">{{ props.excerpt }}</p>
@@ -169,6 +173,14 @@ function tagHref(tag: string): string {
   gap: 0.5rem;
   color: var(--vp-c-text-2);
   font-size: 0.9rem;
+}
+/* 文章标签与底部 pill 一样可点：跳该标签的文章列表 */
+.meta-item--link {
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.meta-item--link:hover {
+  color: var(--accent);
 }
 .meta-icon {
   flex: none;

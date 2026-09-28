@@ -1,5 +1,5 @@
 import { defineConfig } from "vitepress";
-import type { DefaultTheme } from "vitepress";
+import type { DefaultTheme, HeadConfig } from "vitepress";
 import path from "node:path";
 import { promises as fs, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -84,6 +84,31 @@ function buildUploader(): Uploader | null {
   }
 }
 
+// 额外 head 标签：RSS 自动发现（阅读器/浏览器扩展打开站点时可直接订阅）
+// + Cloudflare Web Analytics（token 配了才注入，SPA 切页由 beacon 自动跟进）。
+// 注：base 固定为 "/"，故这里用根路径；若以后改 base，需同步改成 `${base}rss.xml`。
+const head: HeadConfig[] = [
+  [
+    "link",
+    {
+      rel: "alternate",
+      type: "application/rss+xml",
+      title: SITE.title,
+      href: "/rss.xml",
+    },
+  ],
+];
+if (cfBeaconToken) {
+  head.push([
+    "script",
+    {
+      type: "module",
+      src: "https://static.cloudflareinsights.com/beacon.min.js",
+      "data-cf-beacon": JSON.stringify({ token: cfBeaconToken }),
+    },
+  ]);
+}
+
 export default defineConfig({
   srcDir: docsDir,
   title: SITE.title,
@@ -93,19 +118,8 @@ export default defineConfig({
   cleanUrls: true,
   ignoreDeadLinks: true,
 
-  // Cloudflare Web Analytics：token 配置了才注入统计脚本（SPA 切页由 beacon 自动跟进）
-  head: cfBeaconToken
-    ? [
-        [
-          "script",
-          {
-            type: "module",
-            src: "https://static.cloudflareinsights.com/beacon.min.js",
-            "data-cf-beacon": JSON.stringify({ token: cfBeaconToken }),
-          },
-        ],
-      ]
-    : [],
+  // 站点元信息 + RSS 自动发现（见上方 head 构建）
+  head,
 
   vite: {
     // 注入 Giscus 评论配置与站点元信息（值公开无密钥）；未配置时为 null/空串，组件跳过渲染
@@ -129,6 +143,7 @@ export default defineConfig({
     search: { provider: "local" },
     nav: [
       { text: "首页", link: "/" },
+      { text: "合集", link: "/collections" },
       { text: "归档", link: "/archives" },
       { text: "标签", link: "/tags" },
       { text: "关于", link: "/about" },
