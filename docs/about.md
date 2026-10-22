@@ -3,7 +3,11 @@
 
 # 关于我
 
-我是小张，五年前端工程师，对 VibeCoding 有浓厚的兴趣。
+Hey it's Yumine
+
+练习时长两年半（×2）
+
+遇到不懂的会问 AI，看到好的代码会 Ctrl C、Ctrl V，最近在折腾 Vibe Coding
 
 ## 技术栈
 
@@ -15,8 +19,8 @@
 ## 联系我
 
 - GitHub：[@mrzym99](https://github.com/mrzym99)
-- 邮箱：[2715158815@qq.com](mailto:2715158815@qq.com)
-- 微信：M2715158815
+- Email：[2715158815@qq.com](mailto:2715158815@qq.com)
+- WeChat：M2715158815
   
 备注来意
 

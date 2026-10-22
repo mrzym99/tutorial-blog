@@ -29,7 +29,7 @@ function loc(siteUrl: string, pathname: string): string {
 
 /**
  * 生成 sitemap XML。
- * 静态页：/、/about、/tags、/archives；动态页：/collections/<slug>、/tags/<tag>、/posts/<slug>.html。
+ * 静态页：/、/about、/collections、/tags、/archives；动态页：/collections/<slug>、/tags/<tag>、/posts/<slug>.html。
  * 标签列表由 posts 内部聚合（与标签页/归档一致）；草稿合集不入 sitemap。
  */
 export function buildSitemapXml(
@@ -37,7 +37,7 @@ export function buildSitemapXml(
   site: SitemapSite,
   collections: CollectionMeta[] = [],
 ): string {
-  const staticPaths = ['/', '/about', '/tags', '/archives']
+  const staticPaths = ['/', '/about', '/collections', '/tags', '/archives']
   const collectionPaths = collections
     .filter((c) => !c.draft)
     .map((c) => `/collections/${encodeURIComponent(c.slug)}`)

@@ -2,7 +2,7 @@ import type { Theme } from 'vitepress'
 import DefaultTheme from 'vitepress/theme'
 import { defineAsyncComponent } from 'vue'
 import Layout from './Layout.vue'
-import HomePostList from './components/HomePostList.vue'
+import HomeLayout from './components/HomeLayout.vue'
 import ArchiveList from './components/ArchiveList.vue'
 import TagIndex from './components/TagIndex.vue'
 import TagPostList from './components/TagPostList.vue'
@@ -29,7 +29,7 @@ export default {
       app.component('AdminPage', AdminPlaceholder)
       app.component('AdminEditorPage', AdminPlaceholder)
     }
-    app.component('HomePostList', HomePostList)
+    app.component('HomeLayout', HomeLayout)
     app.component('ArchiveList', ArchiveList)
     app.component('TagIndex', TagIndex)
     app.component('TagPostList', TagPostList)
