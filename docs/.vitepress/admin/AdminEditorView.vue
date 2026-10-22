@@ -1,307 +1,304 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { NButton, NModal, NForm, NFormItem, NInput, NDatePicker, NSwitch, NSelect, NTag, NDivider } from 'naive-ui'
-import { useMessage, useDialog } from 'naive-ui'
-import PostEditor from './PostEditor.vue'
-import { DRAFT_KEY, type Draft, type DraftFrontmatter } from './draft'
+import { ref, computed, onMounted, onBeforeUnmount } from "vue";
+import { NButton, NModal, NForm, NFormItem, NInput, NDatePicker, NSwitch, NSelect, NTag, NDivider } from "naive-ui";
+import { useMessage, useDialog } from "naive-ui";
+import PostEditor from "./PostEditor.vue";
+import PostTiptapEditor from "./PostTiptapEditor.vue";
+import { DRAFT_KEY, type Draft, type DraftFrontmatter } from "./draft";
 
 /**
  * 沉浸式编辑器：编辑区占满，元数据通过弹窗修改。
  * 由 AdminApp 先把当前草稿写入 sessionStorage，再在新标签页打开本页；
  * 这里读取草稿、编辑、保存，并把最新状态回写 sessionStorage。
  */
-const message = useMessage()
-const dialog = useDialog()
+const message = useMessage();
+const dialog = useDialog();
 
 interface ListItem {
-  slug: string
-  title?: string
-  tags?: string[]
+  slug: string;
+  title?: string;
+  tags?: string[];
 }
 
 interface CollectionOption {
-  slug: string
-  title: string
+  slug: string;
+  title: string;
 }
 
-const draft = ref<Draft | null>(null)
-const list = ref<ListItem[]>([])
-const collectionOptions = ref<CollectionOption[]>([])
-const selectedSlug = ref('')
-const dirty = ref(false)
-const saving = ref(false)
+const draft = ref<Draft | null>(null);
+const list = ref<ListItem[]>([]);
+const collectionOptions = ref<CollectionOption[]>([]);
+const selectedSlug = ref("");
+const dirty = ref(false);
+const saving = ref(false);
 
 // ---- 文章设置弹窗 ----
-const settingsOpen = ref(false)
-const settingsDraft = ref<Draft | null>(null)
-const newTag = ref('')
+const settingsOpen = ref(false);
+const settingsDraft = ref<Draft | null>(null);
+const newTag = ref("");
 
 // ---- 封面上传（复用正文图片的 /api/admin/upload） ----
-const coverUploading = ref(false)
-const coverInput = ref<HTMLInputElement | null>(null)
+const coverUploading = ref(false);
+const coverInput = ref<HTMLInputElement | null>(null);
 
 function pickCover() {
-  coverInput.value?.click()
+  coverInput.value?.click();
 }
 
 function onCoverPicked(e: Event) {
-  const input = e.target as HTMLInputElement
-  const file = input.files?.[0]
-  input.value = '' // 允许连续选择同一文件
-  if (file) uploadCover(file)
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = ""; // 允许连续选择同一文件
+  if (file) uploadCover(file);
 }
 
 async function uploadCover(file: File) {
-  if (coverUploading.value || !settingsDraft.value) return
-  coverUploading.value = true
+  if (coverUploading.value || !settingsDraft.value) return;
+  coverUploading.value = true;
   try {
-    const fd = new FormData()
-    fd.append('file', file, file.name)
-    const res = await fetch('/api/admin/upload', { method: 'POST', body: fd })
+    const fd = new FormData();
+    fd.append("file", file, file.name);
+    const res = await fetch("/api/admin/upload", { method: "POST", body: fd });
     if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      message.error((data as { error?: string }).error || '封面上传失败')
-      return
+      const data = await res.json().catch(() => ({}));
+      message.error((data as { error?: string }).error || "封面上传失败");
+      return;
     }
-    const data = (await res.json()) as { url: string }
-    settingsDraft.value.frontmatter.cover = data.url
-    message.success('封面已上传，记得保存设置')
+    const data = (await res.json()) as { url: string };
+    settingsDraft.value.frontmatter.cover = data.url;
+    message.success("封面已上传，记得保存设置");
   } finally {
-    coverUploading.value = false
+    coverUploading.value = false;
   }
 }
 
 function removeCover() {
-  if (settingsDraft.value) settingsDraft.value.frontmatter.cover = ''
+  if (settingsDraft.value) settingsDraft.value.frontmatter.cover = "";
 }
 
 function openSettings() {
-  if (!draft.value) return
+  if (!draft.value) return;
   // 深拷贝一份，点取消可以回滚
-  settingsDraft.value = JSON.parse(JSON.stringify(draft.value))
-  newTag.value = ''
-  settingsOpen.value = true
+  settingsDraft.value = JSON.parse(JSON.stringify(draft.value));
+  newTag.value = "";
+  settingsOpen.value = true;
 }
 
 function applySettings() {
-  if (!settingsDraft.value || !draft.value) return
+  if (!settingsDraft.value || !draft.value) return;
   if (!settingsDraft.value.frontmatter.collection) {
-    message.warning('请选择所属合集')
-    return
+    message.warning("请选择所属合集");
+    return;
   }
   // 只更新元数据，不替换 body，避免编辑器状态（光标、undo 历史）被重置
-  draft.value.frontmatter = { ...settingsDraft.value.frontmatter }
-  dirty.value = true
-  persist()
-  settingsOpen.value = false
-  message.success('已更新文章设置')
+  draft.value.frontmatter = { ...settingsDraft.value.frontmatter };
+  dirty.value = true;
+  persist();
+  settingsOpen.value = false;
+  message.success("已更新文章设置");
 }
 
 // 标签管理（设置弹窗内）
 function addTag(t: string) {
-  if (!settingsDraft.value) return
-  const name = t.trim()
-  if (!name) return
-  const cur = settingsDraft.value.frontmatter.tags
-  if (cur.includes(name)) return
-  settingsDraft.value.frontmatter.tags = [...cur, name]
-  newTag.value = ''
+  if (!settingsDraft.value) return;
+  const name = t.trim();
+  if (!name) return;
+  const cur = settingsDraft.value.frontmatter.tags;
+  if (cur.includes(name)) return;
+  settingsDraft.value.frontmatter.tags = [...cur, name];
+  newTag.value = "";
 }
 function removeTag(t: string) {
-  if (!settingsDraft.value) return
-  settingsDraft.value.frontmatter.tags = settingsDraft.value.frontmatter.tags.filter(
-    (x) => x !== t,
-  )
+  if (!settingsDraft.value) return;
+  settingsDraft.value.frontmatter.tags = settingsDraft.value.frontmatter.tags.filter((x) => x !== t);
 }
 
 // 合集选择（设置弹窗内）：文章必须归属一个合集
-const collectionSelectOptions = computed(() =>
-  collectionOptions.value.map((c) => ({ label: c.title, value: c.slug })),
-)
+const collectionSelectOptions = computed(() => collectionOptions.value.map((c) => ({ label: c.title, value: c.slug })));
 
 // 全站已有标签，用于快捷点选追加
 const allTags = computed<string[]>(() => {
-  const set = new Set<string>()
-  for (const it of list.value) for (const t of it.tags ?? []) set.add(t)
-  return [...set].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
-})
+  const set = new Set<string>();
+  for (const it of list.value) for (const t of it.tags ?? []) set.add(t);
+  return [...set].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+});
 
 // 推荐标签（设置弹窗里的"已有"列表 = 全站标签 - 已选）
 const suggestedTags = computed(() =>
   allTags.value.filter((t) => !(settingsDraft.value?.frontmatter.tags ?? []).includes(t)),
-)
+);
 
 /** 当前序号展示（order 由服务端保存时分配，新文章保存前未知） */
 const orderLabel = computed(() => {
-  const order = settingsDraft.value?.frontmatter.order
-  return typeof order === 'number' ? `第 ${order} 篇` : '保存后自动编号'
-})
+  const order = settingsDraft.value?.frontmatter.order;
+  return typeof order === "number" ? `第 ${order} 篇` : "保存后自动编号";
+});
 
 // 日期转换
 function dateToTs(dateStr: string): number | null {
-  if (!dateStr) return null
-  const t = new Date(`${dateStr}T00:00:00`).getTime()
-  return Number.isNaN(t) ? null : t
+  if (!dateStr) return null;
+  const t = new Date(`${dateStr}T00:00:00`).getTime();
+  return Number.isNaN(t) ? null : t;
 }
 function tsToDate(ts: number | null): string {
-  if (ts == null) return settingsDraft.value?.frontmatter.date ?? ''
-  const d = new Date(ts)
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+  if (ts == null) return settingsDraft.value?.frontmatter.date ?? "";
+  const d = new Date(ts);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 // 标题改动（slug 由系统生成，与标题无关）
 function onTitleChange(v: string) {
-  if (!settingsDraft.value) return
-  settingsDraft.value.frontmatter.title = v
+  if (!settingsDraft.value) return;
+  settingsDraft.value.frontmatter.title = v;
 }
 
 onMounted(async () => {
-  const raw = sessionStorage.getItem(DRAFT_KEY)
+  const raw = sessionStorage.getItem(DRAFT_KEY);
   if (!raw) {
-    location.replace('/admin')
-    return
+    location.replace("/admin");
+    return;
   }
   try {
-    draft.value = JSON.parse(raw) as Draft
+    draft.value = JSON.parse(raw) as Draft;
   } catch {
-    location.replace('/admin')
-    return
+    location.replace("/admin");
+    return;
   }
-  selectedSlug.value = draft.value.slug
-  list.value = await fetchList()
-  collectionOptions.value = await fetchCollections()
-  window.addEventListener('keydown', onGlobalKeydown)
-})
-onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
+  selectedSlug.value = draft.value.slug;
+  list.value = await fetchList();
+  collectionOptions.value = await fetchCollections();
+  window.addEventListener("keydown", onGlobalKeydown);
+});
+onBeforeUnmount(() => window.removeEventListener("keydown", onGlobalKeydown));
 
 function onGlobalKeydown(e: KeyboardEvent) {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-    e.preventDefault()
-    save()
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+    e.preventDefault();
+    save();
   }
 }
 
 async function fetchList() {
   try {
-    const res = await fetch('/api/admin/posts')
-    if (!res.ok) return []
-    return (await res.json()) as ListItem[]
+    const res = await fetch("/api/admin/posts");
+    if (!res.ok) return [];
+    return (await res.json()) as ListItem[];
   } catch {
-    return []
+    return [];
   }
 }
 
 async function fetchCollections(): Promise<CollectionOption[]> {
   try {
-    const res = await fetch('/api/admin/collections')
-    if (!res.ok) return []
-    const data = (await res.json()) as { slug: string; title: string }[]
-    return data.map((c) => ({ slug: c.slug, title: c.title }))
+    const res = await fetch("/api/admin/collections");
+    if (!res.ok) return [];
+    const data = (await res.json()) as { slug: string; title: string }[];
+    return data.map((c) => ({ slug: c.slug, title: c.title }));
   } catch {
-    return []
+    return [];
   }
 }
 
 /** 把最新草稿写回 sessionStorage，保证编辑器页刷新/误关可恢复。 */
 function persist() {
-  if (draft.value) sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft.value))
+  if (draft.value) sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft.value));
 }
 
 function onBodyChange(md: string) {
-  if (!draft.value) return
-  draft.value.body = md
-  dirty.value = true
-  persist()
+  if (!draft.value) return;
+  draft.value.body = md;
+  dirty.value = true;
+  persist();
 }
 
 /** 执行真正的保存请求；返回是否成功。 */
 async function performSave(): Promise<boolean> {
-  if (!draft.value || saving.value) return false
-  const d = draft.value
-  saving.value = true
+  if (!draft.value || saving.value) return false;
+  const d = draft.value;
+  saving.value = true;
   try {
     // 空封面不落盘（frontmatter 里不写 cover: ''）
-    const fm = { ...d.frontmatter }
-    if (!fm.cover) delete (fm as Partial<DraftFrontmatter>).cover
+    const fm = { ...d.frontmatter };
+    if (!fm.cover) delete (fm as Partial<DraftFrontmatter>).cover;
     const res = await fetch(`/api/admin/posts/${encodeURIComponent(d.slug)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ frontmatter: fm, body: d.body }),
-    })
+    });
     if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      message.error((data as { error?: string }).error || '保存失败')
-      return false
+      const data = await res.json().catch(() => ({}));
+      message.error((data as { error?: string }).error || "保存失败");
+      return false;
     }
-    const saved = (await res.json()) as { slug: string }
-    selectedSlug.value = saved.slug
-    dirty.value = false
-    list.value = await fetchList()
-    persist()
-    message.success('已保存')
-    return true
+    const saved = (await res.json()) as { slug: string };
+    selectedSlug.value = saved.slug;
+    dirty.value = false;
+    list.value = await fetchList();
+    persist();
+    message.success("已保存");
+    return true;
   } finally {
-    saving.value = false
+    saving.value = false;
   }
 }
 
 async function save() {
-  if (!draft.value || saving.value) return
-  const d = draft.value
+  if (!draft.value || saving.value) return;
+  const d = draft.value;
 
   // 标题为空或未选合集时，先弹出设置让用户补全（slug 由系统生成，无需检查）
   if (!d.frontmatter.title) {
-    openSettings()
-    message.warning('请先填写标题')
-    return
+    openSettings();
+    message.warning("请先填写标题");
+    return;
   }
   if (!d.frontmatter.collection) {
-    openSettings()
-    message.warning('请先选择所属合集')
-    return
+    openSettings();
+    message.warning("请先选择所属合集");
+    return;
   }
 
-  await performSave()
+  await performSave();
 }
 
 function back() {
   if (dirty.value) {
     dialog.warning({
-      title: '未保存的修改',
-      content: '有未保存的修改，确定离开吗？',
-      positiveText: '离开',
-      negativeText: '留在本页',
+      title: "未保存的修改",
+      content: "有未保存的修改，确定离开吗？",
+      positiveText: "离开",
+      negativeText: "留在本页",
       onPositiveClick: async () => {
-        doLeave()
-        return true
+        doLeave();
+        return true;
       },
-    })
-    return
+    });
+    return;
   }
-  doLeave()
+  doLeave();
 }
 
 function doLeave() {
-  sessionStorage.removeItem(DRAFT_KEY)
+  sessionStorage.removeItem(DRAFT_KEY);
   if (selectedSlug.value) {
-    sessionStorage.setItem('admin-selected', selectedSlug.value)
+    sessionStorage.setItem("admin-selected", selectedSlug.value);
   }
   // 编辑器在新标签页打开（window.open）：脚本有权限直接关闭当前 tab。
   // 若页面不是脚本打开的（如直接输入地址），window.close() 无效，退回后台列表兜底。
-  window.close()
+  window.close();
   setTimeout(() => {
-    location.href = '/admin'
-  }, 300)
+    location.href = "/admin";
+  }, 300);
 }
 
 // 当前文章标题（用于顶栏显示）
 const displayTitle = computed(() => {
-  if (!draft.value) return ''
-  return draft.value.frontmatter.title || '未命名文章'
-})
+  if (!draft.value) return "";
+  return draft.value.frontmatter.title || "未命名文章";
+});
 </script>
 
 <template>
@@ -315,14 +312,21 @@ const displayTitle = computed(() => {
       <div class="right">
         <n-button ghost size="small" @click="openSettings">⚙ 文章设置</n-button>
         <n-button type="primary" size="small" :disabled="saving" @click="save">
-          {{ saving ? '保存中…' : '保存' }}
+          {{ saving ? "保存中…" : "保存" }}
           <kbd>⌘S</kbd>
         </n-button>
       </div>
     </header>
 
     <main class="content">
-      <PostEditor
+      <!-- <PostEditor
+        v-if="draft"
+        :key="draft.slug || '_new_'"
+        :model-value="draft.body"
+        @update:model-value="onBodyChange"
+        @notice="(m: string) => message.error(m)"
+      /> -->
+      <PostTiptapEditor
         v-if="draft"
         :key="draft.slug || '_new_'"
         :model-value="draft.body"
@@ -345,11 +349,7 @@ const displayTitle = computed(() => {
       <div v-if="settingsDraft" class="settings-form">
         <n-form :show-label="false" label-placement="top">
           <n-form-item label="标题">
-            <n-input
-              :value="settingsDraft.frontmatter.title"
-              placeholder="文章标题"
-              @update:value="onTitleChange"
-            />
+            <n-input :value="settingsDraft.frontmatter.title" placeholder="文章标题" @update:value="onTitleChange" />
           </n-form-item>
 
           <n-form-item label="日期">
@@ -374,32 +374,16 @@ const displayTitle = computed(() => {
 
           <n-form-item label="封面（选填）">
             <div class="cover-field">
-              <input
-                ref="coverInput"
-                type="file"
-                accept="image/*"
-                class="cover-file"
-                @change="onCoverPicked"
-              />
+              <input ref="coverInput" type="file" accept="image/*" class="cover-file" @change="onCoverPicked" />
               <div v-if="settingsDraft.frontmatter.cover" class="cover-preview">
                 <img :src="settingsDraft.frontmatter.cover" alt="封面预览" />
                 <div class="cover-actions">
-                  <n-button size="tiny" :loading="coverUploading" @click="pickCover">
-                    更换
-                  </n-button>
-                  <n-button size="tiny" type="error" ghost @click="removeCover">
-                    移除
-                  </n-button>
+                  <n-button size="tiny" :loading="coverUploading" @click="pickCover"> 更换 </n-button>
+                  <n-button size="tiny" type="error" ghost @click="removeCover"> 移除 </n-button>
                 </div>
               </div>
-              <button
-                v-else
-                type="button"
-                class="cover-pick"
-                :disabled="coverUploading"
-                @click="pickCover"
-              >
-                {{ coverUploading ? '上传中…' : '＋ 点击上传封面' }}
+              <button v-else type="button" class="cover-pick" :disabled="coverUploading" @click="pickCover">
+                {{ coverUploading ? "上传中…" : "＋ 点击上传封面" }}
                 <span class="cover-hint">不上传时，首页卡片将显示「阅读全文」按钮</span>
               </button>
             </div>
@@ -414,9 +398,7 @@ const displayTitle = computed(() => {
                 placeholder="选择合集"
                 filterable
                 style="flex: 1"
-                @update:value="
-                  (v: string | null) => (settingsDraft!.frontmatter.collection = v ?? '')
-                "
+                @update:value="(v: string | null) => (settingsDraft!.frontmatter.collection = v ?? '')"
               />
               <span class="order-hint">{{ orderLabel }}</span>
             </div>
@@ -446,14 +428,7 @@ const displayTitle = computed(() => {
             </div>
             <div v-if="suggestedTags.length" class="quick">
               <span class="quick-label">已有：</span>
-              <n-button
-                v-for="t in suggestedTags"
-                :key="t"
-                size="tiny"
-                quaternary
-                type="primary"
-                @click="addTag(t)"
-              >
+              <n-button v-for="t in suggestedTags" :key="t" size="tiny" quaternary type="primary" @click="addTag(t)">
                 + {{ t }}
               </n-button>
             </div>
@@ -569,7 +544,9 @@ const displayTitle = computed(() => {
   color: var(--vp-c-text-2);
   font-size: 0.88rem;
   cursor: pointer;
-  transition: border-color 0.2s, color 0.2s;
+  transition:
+    border-color 0.2s,
+    color 0.2s;
 }
 .cover-pick:hover:not(:disabled) {
   border-color: var(--vp-c-brand-1);

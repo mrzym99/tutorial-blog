@@ -14,6 +14,7 @@ import { createCosUploader, assertCosConfig } from "./server/upload-cos";
 import type { CosConfig } from "./server/upload-cos";
 import type { Uploader } from "./server/routes";
 import type { GiscusConfig } from "./theme/giscus";
+import type { AIConfig } from "./theme/ai.ts";
 
 const docsDir = fileURLToPath(new URL("..", import.meta.url));
 const postsDir = path.join(docsDir, "posts");
@@ -57,6 +58,17 @@ const giscusConfig: GiscusConfig | null = (() => {
   return config.repo && config.repoId && config.categoryId ? config : null;
 })();
 
+const aIConfig: AIConfig = {
+  baseURL: pickEnv("AI_BASE_URL"),
+  apiKey: pickEnv("AI_API_KEY"),
+  model: pickEnv("AI_MODEL"),
+};
+
+// AI 跨域：浏览器直连 Ark 会被 CORS 拦（Authorization 未列入其预检白名单）。
+// dev 下改走 vite 同源代理（见 vite.server.proxy）；生产部署需在同域后端做同样转发。
+const AI_PROXY_PATH = "/ai-proxy";
+const aiProxyUrl = aIConfig.baseURL.startsWith("http") ? new URL(aIConfig.baseURL) : null;
+
 // 站点扩展信息：ICP 备案号（页脚展示并链接工信部）与 Cloudflare Web Analytics
 // 的 beacon token（访问统计）。均为可选，缺失时对应功能不启用。
 const siteIcp = pickEnv("SITE_ICP");
@@ -84,7 +96,7 @@ function buildUploader(): Uploader | null {
   }
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   srcDir: docsDir,
   title: SITE.title,
   description: SITE.description,
@@ -93,25 +105,42 @@ export default defineConfig({
   cleanUrls: true,
   ignoreDeadLinks: true,
 
-  // Cloudflare Web Analytics：token 配置了才注入统计脚本（SPA 切页由 beacon 自动跟进）
-  head: cfBeaconToken
-    ? [
-        [
-          "script",
-          {
-            type: "module",
-            src: "https://static.cloudflareinsights.com/beacon.min.js",
-            "data-cf-beacon": JSON.stringify({ token: cfBeaconToken }),
-          },
-        ],
-      ]
-    : [],
+  // Cloudflare Web Analytics：token 配置了才注入统计脚本（SPA 切页由 beacon 自动跟进）；
+  // 仅 build 时注入，dev 下 beacon 上报会因 origin 不匹配报 CORS 错误
+  head:
+    cfBeaconToken && command === "build"
+      ? [
+          [
+            "script",
+            {
+              type: "module",
+              src: "https://static.cloudflareinsights.com/beacon.min.js",
+              "data-cf-beacon": JSON.stringify({ token: cfBeaconToken }),
+            },
+          ],
+        ]
+      : [],
 
   vite: {
     // 注入 Giscus 评论配置与站点元信息（值公开无密钥）；未配置时为 null/空串，组件跳过渲染
     define: {
       __GISCUS__: JSON.stringify(giscusConfig),
       __SITE_ICP__: JSON.stringify(siteIcp),
+      // dev 下 AI 走同源代理（aIConfig.baseURL 是绝对地址时浏览器直连会被 CORS 拦）
+      __AI__: JSON.stringify(
+        command === "serve" && aiProxyUrl ? { ...aIConfig, baseURL: AI_PROXY_PATH } : aIConfig,
+      ),
+    },
+    server: {
+      proxy: aiProxyUrl
+        ? {
+            [AI_PROXY_PATH]: {
+              target: aiProxyUrl.origin,
+              changeOrigin: true,
+              rewrite: (p) => p.replace(/^\/ai-proxy/, aiProxyUrl.pathname.replace(/\/$/, "")),
+            },
+          }
+        : undefined,
     },
     plugins: [
       adminPlugin({
@@ -150,7 +179,7 @@ export default defineConfig({
     }
     await generateFeedFiles(siteConfig);
   },
-});
+}));
 
 /** 构建结束后生成 rss.xml 与 sitemap.xml 到输出目录（复用同一份 posts 数据）。 */
 async function generateFeedFiles(siteConfig: { srcDir: string; outDir: string }): Promise<void> {
