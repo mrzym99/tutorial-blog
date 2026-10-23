@@ -23,7 +23,6 @@ function collectionHref(slug: string): string {
         </div>
         <div class="body">
           <h2 class="title">{{ c.title }}</h2>
-          <p class="desc">{{ c.description || '暂无简介' }}</p>
           <span class="count">{{ c.count }} 篇文章</span>
         </div>
       </a>
@@ -90,17 +89,6 @@ function collectionHref(slug: string): string {
 }
 .collection-card:hover .title {
   color: var(--vp-c-brand-1);
-}
-.desc {
-  margin: 0;
-  font-size: 0.86rem;
-  line-height: 1.55;
-  color: var(--vp-c-text-2);
-  /* 两行截断，保持卡片高度整齐 */
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 .count {
   margin-top: auto;

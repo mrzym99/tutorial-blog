@@ -99,6 +99,10 @@ function buildUploader(): Uploader | null {
   }
 }
 
+const faviconHead: HeadConfig[] = [
+  ["link", { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }],
+];
+
 // 额外 head 标签：RSS 自动发现（阅读器/浏览器扩展打开站点时可直接订阅）
 // + Cloudflare Web Analytics（token 配了才注入，仅 build——dev 下 beacon 上报会因
 // origin 不匹配报 CORS 错误；SPA 切页由 beacon 自动跟进）。
@@ -137,7 +141,7 @@ export default defineConfig(({ command }) => ({
   ignoreDeadLinks: true,
 
   // RSS 自动发现 + Cloudflare Web Analytics（见上方 head 构建，beacon 仅 build 注入）
-  head: command === "build" ? [...rssHead, ...beaconHead] : rssHead,
+  head: command === "build" ? [...faviconHead, ...rssHead, ...beaconHead] : [...faviconHead, ...rssHead],
 
   vite: {
     // 注入 Giscus 评论配置与站点元信息（值公开无密钥）；未配置时为 null/空串，组件跳过渲染

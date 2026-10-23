@@ -40,7 +40,6 @@ function ordinal(index: number): string {
 <template>
   <header class="collection-head">
     <h1>{{ collection?.title || '合集' }}</h1>
-    <p v-if="collection?.description" class="desc">{{ collection.description }}</p>
   </header>
 
   <div class="card-list">
@@ -72,11 +71,6 @@ function ordinal(index: number): string {
   font-size: 1.7rem;
   font-weight: 700;
   color: var(--vp-c-text-1);
-}
-.desc {
-  margin: 0.4rem 0 0;
-  font-size: 0.92rem;
-  color: var(--vp-c-text-2);
 }
 
 .card-list {

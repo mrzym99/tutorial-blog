@@ -28,7 +28,6 @@ export interface CollectionItem {
 
 export interface CollectionFormValue {
   title: string
-  description: string
   cover: string
   draft: boolean
 }
@@ -86,12 +85,12 @@ function move(index: number, delta: -1 | 1) {
 const modalOpen = ref(false)
 const editingSlug = ref('') // 空 = 新建
 const saving = ref(false)
-const form = ref<CollectionFormValue>({ title: '', description: '', cover: '', draft: false })
+const form = ref<CollectionFormValue>({ title: '', cover: '', draft: false })
 const isEdit = computed(() => Boolean(editingSlug.value))
 
 function openCreate() {
   editingSlug.value = ''
-  form.value = { title: '', description: '', cover: '', draft: false }
+  form.value = { title: '', cover: '', draft: false }
   modalOpen.value = true
 }
 
@@ -99,7 +98,6 @@ function openEdit(row: CollectionItem) {
   editingSlug.value = row.slug
   form.value = {
     title: row.title,
-    description: row.description ?? '',
     cover: row.cover ?? '',
     draft: row.draft ?? false,
   }
@@ -212,14 +210,7 @@ const columns = [
     },
   },
   {
-    title: '简介',
-    key: 'description',
-    ellipsis: { tooltip: true },
-    render(row: CollectionItem) {
-      return row.description || null
-    },
-  },
-  { title: '文章数', key: 'count', width: 80 },
+    title: '文章数', key: 'count', width: 80 },
   { title: '创建日期', key: 'createdAt', width: 110 },
   {
     title: '操作',
@@ -308,14 +299,6 @@ const columns = [
       <n-form :show-label="false" label-placement="top">
         <n-form-item label="标题">
           <n-input v-model:value="form.title" placeholder="合集标题" @keydown.enter.prevent="submit" />
-        </n-form-item>
-        <n-form-item label="简介">
-          <n-input
-            v-model:value="form.description"
-            type="textarea"
-            :autosize="{ minRows: 2, maxRows: 4 }"
-            placeholder="简介（选填），展示在合集卡片与详情页"
-          />
         </n-form-item>
         <n-form-item label="封面（选填）">
           <div class="cover-field">

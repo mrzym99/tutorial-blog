@@ -16,8 +16,6 @@ export interface CollectionPostItem {
 const props = defineProps<{
   /** 合集标题（顶部展示） */
   title: string
-  /** 合集简介（选填） */
-  description?: string
   /** 合集下全部文章（含草稿），内部按章节序排序 */
   posts: CollectionPostItem[]
   /** 排序保存中：禁用上移/下移按钮，防止连点产生交错写入 */
@@ -158,7 +156,6 @@ const columns = [
       <h1>{{ title }}</h1>
       <span class="count">{{ posts.length }} 篇</span>
     </div>
-    <p v-if="description" class="desc">{{ description }}</p>
 
     <n-data-table
       v-if="posts.length"
@@ -201,12 +198,6 @@ const columns = [
 .count {
   color: var(--vp-c-text-3);
   font-size: 0.9rem;
-}
-.desc {
-  flex-shrink: 0;
-  margin: 0 0 1rem;
-  font-size: 0.9rem;
-  color: var(--vp-c-text-2);
 }
 .table {
   flex: 1;

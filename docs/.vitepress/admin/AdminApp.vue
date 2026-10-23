@@ -442,7 +442,6 @@ async function api<T>(path: string): Promise<T> {
       <CollectionDetail
         v-else-if="view === 'collection-detail' && currentCollectionMeta"
         :title="currentCollectionMeta.title"
-        :description="currentCollectionMeta.description"
         :posts="collectionPosts"
         :saving="reorderSaving"
         @back="view = 'collections'"
