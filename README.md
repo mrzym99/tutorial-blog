@@ -4,7 +4,7 @@
 
 ## 特性
 
-- 📝 **本地写作后台**（`/admin`，仅 dev）：文章 / 合集 / 回收站三个标签页管理；`/admin-edit` 打开独立编辑页，md-editor-v3 Markdown 编辑（工具栏 + 图片粘贴上传）、标签 chip 管理、草稿 / 置顶开关。
+- 📝 **本地写作后台**（`/admin`，仅 dev）：文章 / 合集 / 回收站三个标签页管理；`/admin-edit` 打开独立编辑页，@yumine9/vue3-tiptap Markdown 编辑（工具栏 + 图片粘贴上传）、标签 chip 管理、草稿 / 置顶开关。
 - 📚 **合集系统**：文章可归属合集，导航「合集」进入合集总览页，点卡片看合集详情页（该合集章节列表）；合集展示顺序与合集内文章章节序均可在后台一键调整（↑↓ 排序，带平滑动画），合集总览页/文章页侧栏/sitemap 按同一顺序输出。
 - 🏠 **首页**：文章卡片流（分页）+ 右侧作者信息栏（头像/简介/文章数·标签数/GitHub·邮箱·RSS）。
 - 🖼 **图床上传**：编辑器内粘贴 / 拖拽 / 按钮选择图片自动上传到腾讯云 COS 并插入链接；密钥只存在本地 Node 侧，不进浏览器。
@@ -16,17 +16,17 @@
 
 ## 技术栈
 
-| 项 | 选型 |
-|---|---|
-| 站点框架 | VitePress 1.x |
-| UI | Vue 3 + TypeScript，后台组件库 naive-ui |
-| Markdown 编辑器 | md-editor-v3 |
-| 测试 | vitest |
-| 包管理 | pnpm（Node ≥ 20） |
-| 图床 | 腾讯云 COS（自配 CDN 域名） |
-| 评论 | Giscus |
-| 统计 | Cloudflare Web Analytics（可选） |
-| 部署 | Cloudflare Pages |
+| 项              | 选型                                    |
+| --------------- | --------------------------------------- |
+| 站点框架        | VitePress 1.x                           |
+| UI              | Vue 3 + TypeScript，后台组件库 naive-ui |
+| Markdown 编辑器 | @yumine9/vue3-tiptap                    |
+| 测试            | vitest                                  |
+| 包管理          | pnpm（Node ≥ 20）                       |
+| 图床            | 腾讯云 COS（自配 CDN 域名）             |
+| 评论            | Giscus                                  |
+| 统计            | Cloudflare Web Analytics（可选）        |
+| 部署            | Cloudflare Pages                        |
 
 ## 快速上手
 
@@ -118,7 +118,7 @@ CF_BEACON_TOKEN=Cloudflare生成的beacon token
 
 本地开发模式访问 `/admin` 打开写作后台，三个标签页：
 
-- **文章**：左侧文章列表（标题 / 草稿 / 置顶标识），点"编辑"在新标签页打开 `/admin-edit` 独立编辑页 —— 顶部为标题、slug、日期、标签、摘要、合集归属等表单，中间是 md-editor-v3 所见即所得 Markdown 编辑器。
+- **文章**：左侧文章列表（标题 / 草稿 / 置顶标识），点"编辑"在新标签页打开 `/admin-edit` 独立编辑页 —— 顶部为标题、slug、日期、标签、摘要、合集归属等表单，中间是 @yumine9/vue3-tiptap 所见即所得 Markdown 编辑器。
 - **合集**：创建 / 编辑合集（标题、简介、封面），列表内 ↑↓ 调整合集展示顺序；点合集名进入合集详情，↑↓ 调整文章章节序（从 1 起编号）。两处排序均即时动画、自动保存；未手动排序的合集按创建日期兜底排在后面。
 - **回收站**：删除的文章移入 `docs/posts/.trash/`，可恢复或彻底删除。
 
@@ -132,7 +132,7 @@ CF_BEACON_TOKEN=Cloudflare生成的beacon token
 - **图片**：编辑器内粘贴、拖拽，或用工具栏"图片"按钮上传，自动传到腾讯云 COS 并插入 `![alt](url)`。
 - **删除**：不直接删文件，先移入 `.trash/` 回收站。
 
-> 生产构建的 `/admin` / `/admin-edit` 只显示占位提示，后台代码与 naive-ui / md-editor-v3 依赖不会打进线上产物。
+> 生产构建的 `/admin` / `/admin-edit` 只显示占位提示，后台代码与 naive-ui / @yumine9/vue3-tiptap 依赖不会打进线上产物。
 
 ## 目录结构
 

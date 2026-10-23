@@ -29,18 +29,18 @@
 
 ## 3. 技术栈
 
-| 项 | 选型 |
-|---|---|
-| 站点框架 | VitePress 1.x |
-| 框架 | Vue 3 + TypeScript |
-| UI 组件 | naive-ui（后台表格/表单/弹窗/轻提示） |
-| 编辑器 | md-editor-v3（Markdown 编辑 + 预览，后台编辑态用） |
-| 测试 | vitest |
-| 包管理 | pnpm |
-| 图床 | 腾讯云 COS（`cos-nodejs-sdk-v5`；SM.MS 已失效，被取代） |
-| 部署 | Cloudflare Pages（Git 连接自动构建；也支持 wrangler 手动推产物） |
-| 评论 | Giscus（GitHub Discussions 驱动，纯静态，无密钥） |
-| 基线 | Node ≥ 20 |
+| 项       | 选型                                                             |
+| -------- | ---------------------------------------------------------------- |
+| 站点框架 | VitePress 1.x                                                    |
+| 框架     | Vue 3 + TypeScript                                               |
+| UI 组件  | naive-ui（后台表格/表单/弹窗/轻提示）                            |
+| 编辑器   | @yumine9/vue3-tiptap（Markdown 编辑 + 预览，后台编辑态用）       |
+| 测试     | vitest                                                           |
+| 包管理   | pnpm                                                             |
+| 图床     | 腾讯云 COS（`cos-nodejs-sdk-v5`；SM.MS 已失效，被取代）          |
+| 部署     | Cloudflare Pages（Git 连接自动构建；也支持 wrangler 手动推产物） |
+| 评论     | Giscus（GitHub Discussions 驱动，纯静态，无密钥）                |
+| 基线     | Node ≥ 20                                                        |
 
 ## 4. 目录结构
 
@@ -62,7 +62,7 @@ tutorial-blog/
    │  │  ├─ CollectionList.vue    # 合集列表（新建/编辑/删除 + 序号排序动画）
    │  │  ├─ CollectionDetail.vue  # 合集内文章列表（章节序排序动画）
    │  │  ├─ TrashList.vue         # 回收站（恢复/彻底删除/清空）
-   │  │  ├─ PostEditor.vue        # md-editor-v3 封装（粘贴/选择上传图片）
+   │  │  ├─ PostEditor.vue        # @yumine9/vue3-tiptap 封装（粘贴/选择上传图片）
    │  │  ├─ flip.ts               # FLIP 行交换动画（纯 DOM，无依赖）
    │  │  └─ draft.ts              # sessionStorage 草稿传递（列表→编辑器新标签页）
    │  ├─ server/              # dev 中间件逻辑（Node 侧，仅 dev 加载）
@@ -134,18 +134,18 @@ order: 2                 # 合集展示序号（排序接口整体重写；未�
 
 Vite 插件在 `configureServer(server)` 中注册，前缀 `/api/admin/`。
 
-| 方法 | 路径 | 作用 |
-|---|---|---|
-| GET | `/api/admin/posts` | 文章列表（含 draft/pinned/collection/order） |
-| GET/PUT/DELETE | `/api/admin/posts/:slug` | 读单篇 / 新建保存（自动分配 order） / 移入回收站 |
-| GET | `/api/admin/trash` | 回收站列表 |
-| POST | `/api/admin/trash/:slug/restore` | 从回收站恢复 |
-| DELETE | `/api/admin/trash/:slug` | 彻底删除 |
-| GET/POST | `/api/admin/collections` | 合集列表 / 新建（slug 系统生成，createdAt 缺省今天） |
-| GET/PUT/DELETE | `/api/admin/collections/:slug` | 读 / 保存元数据（createdAt/order 未携带时保留原值） / 删除（非空 409） |
-| PUT | `/api/admin/collections/:slug/order` | 合集内文章排序：body `{slugs}`，按列表重写 order 为 1、2、3… |
-| PUT | `/api/admin/collections/order` | **合集列表排序**：body `{slugs}`（全部合集完整顺序），按列表重写每个合集 order 为 1、2、3…；先整体校验后落盘，slug 重复 400 |
-| POST | `/api/admin/upload` | 图片上传（multipart `file`）→ `{url}`；COS 未配置 503，上传失败 502 |
+| 方法           | 路径                                 | 作用                                                                                                                        |
+| -------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| GET            | `/api/admin/posts`                   | 文章列表（含 draft/pinned/collection/order）                                                                                |
+| GET/PUT/DELETE | `/api/admin/posts/:slug`             | 读单篇 / 新建保存（自动分配 order） / 移入回收站                                                                            |
+| GET            | `/api/admin/trash`                   | 回收站列表                                                                                                                  |
+| POST           | `/api/admin/trash/:slug/restore`     | 从回收站恢复                                                                                                                |
+| DELETE         | `/api/admin/trash/:slug`             | 彻底删除                                                                                                                    |
+| GET/POST       | `/api/admin/collections`             | 合集列表 / 新建（slug 系统生成，createdAt 缺省今天）                                                                        |
+| GET/PUT/DELETE | `/api/admin/collections/:slug`       | 读 / 保存元数据（createdAt/order 未携带时保留原值） / 删除（非空 409）                                                      |
+| PUT            | `/api/admin/collections/:slug/order` | 合集内文章排序：body `{slugs}`，按列表重写 order 为 1、2、3…                                                                |
+| PUT            | `/api/admin/collections/order`       | **合集列表排序**：body `{slugs}`（全部合集完整顺序），按列表重写每个合集 order 为 1、2、3…；先整体校验后落盘，slug 重复 400 |
+| POST           | `/api/admin/upload`                  | 图片上传（multipart `file`）→ `{url}`；COS 未配置 503，上传失败 502                                                         |
 
 错误码约定：slug 非法/frontmatter 校验失败/归属不存在 `400`，资源不存在 `404`，非空合集删除 `409`，方法不匹配 `405`。写 frontmatter 相关接口成功后触发 `onSidebarChange`（touch 配置文件 → VitePress 重启重建侧栏）。
 
@@ -161,7 +161,7 @@ Vite 插件在 `configureServer(server)` 中注册，前缀 `/api/admin/`。
   - **合集详情**：`CollectionDetail` 合集内文章列表，↑↓ 调整章节序（同样乐观更新 + FLIP 动画）→ `PUT /api/admin/collections/:slug/order`。
   - **文章 tab**：`PostList` 全部文章（跨合集），支持批量删除。
   - **回收站 tab**：`TrashList` 恢复/彻底删除/批量/清空。
-- **编辑器**（`AdminEditorPage` + `AdminEditorView` + `PostEditor`）：列表点「编辑」把草稿写 sessionStorage 后 `window.open('/admin-edit')` 新标签页打开；md-editor-v3 编辑 + 预览；frontmatter 表单含标题/标签/摘要/封面/合集/草稿/置顶，展示「第 N 篇」序号提示；图片粘贴/选择后经 `/api/admin/upload` 上传插入。
+- **编辑器**（`AdminEditorPage` + `AdminEditorView` + `PostEditor`）：列表点「编辑」把草稿写 sessionStorage 后 `window.open('/admin-edit')` 新标签页打开；@yumine9/vue3-tiptap 编辑 + 预览；frontmatter 表单含标题/标签/摘要/封面/合集/草稿/置顶，展示「第 N 篇」序号提示；图片粘贴/选择后经 `/api/admin/upload` 上传插入。
 - **排序动画**：`flip.ts` 在本地交换数据前后测量行位置施加反向位移过渡回 0（220ms ease）；行经 `row-props` 注入 `data-slug` 定位；尊重系统 prefers-reduced-motion。保存失败由父组件重拉列表回滚。
 
 ## 8. 读者侧功能
@@ -183,17 +183,17 @@ Vite 插件在 `configureServer(server)` 中注册，前缀 `/api/admin/`。
 
 ## 10. 测试策略（vitest）
 
-| 模块 | 测试要点 |
-|---|---|
-| `lib/slug.ts` | 合法 slug 通过；`../x`、`a/b`、绝对路径等全部拒绝；UUID 生成合法 |
-| `lib/frontmatter.ts` | 解析/序列化往返一致；无 frontmatter；中文字段 |
-| `lib/tags.ts` | 标签聚合；comparePosts 排序（置顶/日期/稳定性） |
-| `lib/collections.ts` | compareCollectionPosts 章节序；compareCollections（order 优先、createdAt 兜底、slug 稳定）；aggregateCollections（计数/剔除草稿/排序） |
-| `server/posts-store.ts` | 临时目录下的 CRUD、order 分配、trash、原子写、防路径穿越 |
-| `server/collections-store.ts` | CRUD、list 按 order 升序（createdAt 兜底）、save 保留 createdAt/order、原子写、防路径穿越 |
-| `server/routes.ts` | 路由解析（含 `collections/order` 与 `collections/:slug` 不混淆）+ 集成测试：order 分配、合集/文章排序接口（重写 order、非法输入 400、重复 slug 400、元数据不被排序破坏） |
-| `data/sitemap.ts` | URL 集合与草稿过滤 |
-| `server/upload-cos.ts` | mock COS 客户端：成功/未配置/失败错误归一化 |
+| 模块                          | 测试要点                                                                                                                                                                 |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `lib/slug.ts`                 | 合法 slug 通过；`../x`、`a/b`、绝对路径等全部拒绝；UUID 生成合法                                                                                                         |
+| `lib/frontmatter.ts`          | 解析/序列化往返一致；无 frontmatter；中文字段                                                                                                                            |
+| `lib/tags.ts`                 | 标签聚合；comparePosts 排序（置顶/日期/稳定性）                                                                                                                          |
+| `lib/collections.ts`          | compareCollectionPosts 章节序；compareCollections（order 优先、createdAt 兜底、slug 稳定）；aggregateCollections（计数/剔除草稿/排序）                                   |
+| `server/posts-store.ts`       | 临时目录下的 CRUD、order 分配、trash、原子写、防路径穿越                                                                                                                 |
+| `server/collections-store.ts` | CRUD、list 按 order 升序（createdAt 兜底）、save 保留 createdAt/order、原子写、防路径穿越                                                                                |
+| `server/routes.ts`            | 路由解析（含 `collections/order` 与 `collections/:slug` 不混淆）+ 集成测试：order 分配、合集/文章排序接口（重写 order、非法输入 400、重复 slug 400、元数据不被排序破坏） |
+| `data/sitemap.ts`             | URL 集合与草稿过滤                                                                                                                                                       |
+| `server/upload-cos.ts`        | mock COS 客户端：成功/未配置/失败错误归一化                                                                                                                              |
 
 Vue 组件不做重型组件测试（交互手动验证）；VitePress config 不做集成测试。
 
@@ -203,7 +203,7 @@ Vue 组件不做重型组件测试（交互手动验证）；VitePress config �
 - 任何密钥（COS_*）不得出现在浏览器代码、构建产物、Git 提交中；`.env.local` 必须在 `.gitignore`。
 - 所有写盘路径必须经过 slug 校验（`lib/slug.ts`，安全关键）。
 - 管理功能只能在 dev 形态可用；build 产物中 admin 页只显示提示。
-- 不引入第二套**发布级** Markdown 渲染器：线上渲染一律以 VitePress 为准；md-editor-v3 仅做编辑态预览。
+- 不引入第二套**发布级** Markdown 渲染器：线上渲染一律以 VitePress 为准；@yumine9/vue3-tiptap 仅做编辑态预览。
 - 排序规则全站一致：文章 `comparePosts`、合集内文章 `compareCollectionPosts`、合集列表 `compareCollections`（lib 层纯函数，读者侧/后台/构建期共用）。
 - 部署目标 Cloudflare Pages，base 为 `/`。
 
@@ -213,5 +213,5 @@ Vue 组件不做重型组件测试（交互手动验证）；VitePress config �
 - 不做在线后台的线上版本（admin 不上线）。
 - 不做第二种图床（只接腾讯云 COS；上传模块边界清晰，将来可加）。
 - 不做评论管理后台、访问统计。
-- 不自研编辑器核心：md-editor-v3 封装为可替换适配层。
+- 不自研编辑器核心：@yumine9/vue3-tiptap 封装为可替换适配层。
 - 不做拖拽排序的跨行拖动/多选排序（↑↓ 步进已覆盖当前合集规模）。

@@ -13,7 +13,7 @@ const emit = defineEmits<{
 
 const { isDark } = useNaiveTheme();
 
-// 构建期 SSR 不渲染编辑器（md-editor-v3 依赖 DOM），挂载后再显示
+// 构建期 SSR 不渲染编辑器（@yumine9/vue3-tiptap 依赖 DOM），挂载后再显示
 const mounted = ref(false);
 onMounted(() => (mounted.value = true));
 const extensions = [

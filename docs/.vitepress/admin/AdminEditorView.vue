@@ -2,7 +2,6 @@
 import { ref, computed, onMounted, onBeforeUnmount } from "vue";
 import { NButton, NModal, NForm, NFormItem, NInput, NDatePicker, NSwitch, NSelect, NTag, NDivider } from "naive-ui";
 import { useMessage, useDialog } from "naive-ui";
-import PostEditor from "./PostEditor.vue";
 import PostTiptapEditor from "./PostTiptapEditor.vue";
 import { DRAFT_KEY, type Draft, type DraftFrontmatter } from "./draft";
 
