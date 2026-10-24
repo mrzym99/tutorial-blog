@@ -86,3 +86,46 @@ async function onUploadImg(file: File) {
   padding: 16px 24px;
 }
 </style>
+
+<style>
+a {
+  text-decoration: underline;
+  color: var(--vp-c-brand);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  outline: none;
+}
+
+h1 {
+  line-height: 40px;
+  font-size: 32px;
+}
+h2 {
+  line-height: 32px;
+  font-size: 24px;
+}
+h3 {
+  line-height: 28px;
+  font-size: 20px;
+}
+h4 {
+  line-height: 24px;
+  font-size: 16px;
+}
+h5 {
+  line-height: 20px;
+  font-size: 14px;
+}
+h6 {
+  line-height: 16px;
+  font-size: 12px;
+}
+</style>
