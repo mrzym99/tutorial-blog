@@ -78,12 +78,9 @@ async function onUploadImg(file: File) {
 .editor {
   flex: 1;
   min-height: 0;
-  max-width: 800px;
+  max-width: 880px;
   box-shadow: var(--vp-shadow-2);
   border-radius: 16px;
-}
-:deep(.tiptap-editor .tiptap) {
-  padding: 16px 24px;
 }
 </style>
 
@@ -102,6 +99,7 @@ h6 {
   letter-spacing: -0.02em;
   font-weight: 600;
   outline: none;
+  margin: 0.67em 0;
 }
 
 h1 {

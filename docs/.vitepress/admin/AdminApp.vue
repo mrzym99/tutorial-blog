@@ -474,7 +474,7 @@ async function api<T>(path: string): Promise<T> {
   position: relative;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 60px);
+  height: 100vh;
   border: 1px solid var(--vp-c-divider);
   border-radius: 10px;
   overflow: hidden;
